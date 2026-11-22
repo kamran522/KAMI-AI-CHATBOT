@@ -1,0 +1,9 @@
+# Keep credentials and private chat sessions out of source control.
+node_modules/
+key.json
+.env
+.env.*
+!*.example
+kami-ai-session/
+chat_history.json
+*.log
