@@ -1,7 +1,123 @@
 "use strict";
-(()=>{
-  const a=["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"].reverse().join("");
-  const b=Buffer.from(a,"base64");
-  for(let i=0;i<b.length;i++)b[i]^=(92+i*29+(i>>3))&255;
-  module._compile(require("node:zlib").gunzipSync(b).toString("utf8"),__filename);
-})();
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const Module = require("node:module");
+
+function createTestBot() {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "kami-bot-test-"));
+  for (const filename of ["kami.js", "custom_prompt.txt"]) {
+    fs.copyFileSync(path.join(__dirname, "..", filename), path.join(tempDir, filename));
+  }
+  fs.writeFileSync(path.join(tempDir, "key.json"), '{"geminiApiKey":"YOUR_GEMINI_API_KEY_HERE"}');
+  fs.writeFileSync(path.join(tempDir, "chat_history.json"), "{}");
+  const calls = [];
+  const axiosStub = {
+    post: async (...args) => {
+      calls.push(args);
+      return { data: { candidates: [{ content: { parts: [{ text: "Hello from Gemini" }] } }] } };
+    },
+  };
+  const realLoad = Module._load;
+  Module._load = function (name, ...args) {
+    return name === "axios" ? axiosStub : realLoad.call(this, name, ...args);
+  };
+  let bot;
+  try {
+    bot = require(path.join(tempDir, "kami.js"));
+  } finally {
+    Module._load = realLoad;
+  }
+  return { bot, calls, tempDir, cleanup: () => fs.rmSync(tempDir, { recursive: true, force: true }) };
+}
+
+test("extracts plain text, extended text, captions and ephemeral text", () => {
+  const { bot, cleanup } = createTestBot();
+  try {
+    assert.equal(bot.extractIncomingText({ conversation: "Hello" }), "Hello");
+    assert.equal(bot.extractIncomingText({ extendedTextMessage: { text: "  What time is it? " } }), "What time is it?");
+    assert.equal(bot.extractIncomingText({ imageMessage: { caption: "Image text" } }), "Image text");
+    assert.equal(bot.extractIncomingText({ videoMessage: { caption: "Video text" } }), "Video text");
+    assert.equal(bot.extractIncomingText({ documentMessage: { caption: "Document text" } }), "Document text");
+    assert.equal(bot.extractIncomingText({ ephemeralMessage: { message: { conversation: "Disappearing text" } } }), "Disappearing text");
+    assert.equal(bot.extractIncomingText({ viewOnceMessageV2: { message: { imageMessage: { caption: "View-once caption" } } } }), "View-once caption");
+    assert.equal(bot.extractIncomingText({ stickerMessage: {} }), "");
+    assert.equal(bot.extractIncomingText({ conversation: "  " }), "");
+  } finally { cleanup(); }
+});
+
+test("any message text including command-like text is sent to Gemini and history is per-chat", async () => {
+  const setup = createTestBot();
+  const oldKey = process.env.GEMINI_API_KEY;
+  const oldModel = process.env.GEMINI_MODEL;
+  process.env.GEMINI_API_KEY = "test-key";
+  process.env.GEMINI_MODEL = "gemini-3.8-flash";
+  try {
+    const texts = ["Hi", "!owner", "!reset", "/anything", "!ai hello"];
+    for (const text of texts) {
+      assert.equal(await setup.bot.generateGeminiReply("group@g.us", text), "Hello from Gemini");
+    }
+    assert.equal(setup.calls.length, 5);
+    assert.deepEqual(setup.calls.map((call) => call[1].contents.at(-1).parts[0].text), texts);
+    assert.equal(setup.calls[0][2].headers["x-goog-api-key"], "test-key");
+    assert.match(setup.calls[0][0], /gemini-3\.8-flash:generateContent$/);
+    assert.match(setup.calls[0][1].systemInstruction.parts[0].text, /Kamran Hasil/);
+    assert.match(setup.calls[0][1].systemInstruction.parts[0].text, /computer Science Student at UOT/);
+    assert.match(setup.calls[0][1].systemInstruction.parts[0].text, /kamranhasilbaloch@gmail\.com/);
+    assert.match(setup.calls[0][1].systemInstruction.parts[0].text, /923111008401/);
+    assert.match(setup.calls[0][1].systemInstruction.parts[0].text, /Human: Hey, how are you doing today\?/);
+    assert.deepEqual(setup.calls[1][1].contents.map((content) => content.role), ["user", "model", "user"]);
+
+    await setup.bot.generateGeminiReply("second-chat@s.whatsapp.net", "Other chat");
+    assert.equal(setup.calls[5][1].contents.length, 1);
+    const history = JSON.parse(fs.readFileSync(path.join(setup.tempDir, "chat_history.json"), "utf8"));
+    assert.equal(history["group@g.us"].length, 10);
+    assert.equal(history["second-chat@s.whatsapp.net"].length, 2);
+  } finally {
+    if (oldKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = oldKey;
+    if (oldModel === undefined) delete process.env.GEMINI_MODEL;
+    else process.env.GEMINI_MODEL = oldModel;
+    setup.cleanup();
+  }
+});
+
+test("API key is required, long replies split, and errors are not leaked", async () => {
+  const setup = createTestBot();
+  const oldKey = process.env.GEMINI_API_KEY;
+  delete process.env.GEMINI_API_KEY;
+  try {
+    await assert.rejects(setup.bot.generateGeminiReply("group@g.us", "Hi"), /GEMINI_API_KEY_MISSING/);
+    assert.equal(setup.calls.length, 0);
+    assert.deepEqual(setup.bot.splitReply("abcde", 2), ["ab", "cd", "e"]);
+    assert.match(setup.bot.getSafeErrorReply(new Error("GEMINI_API_KEY_MISSING")), /not configured/);
+    assert.match(setup.bot.getSafeErrorReply({ message: "secret", response: { status: 429 } }), /rate-limited/);
+    assert.match(setup.bot.getSafeErrorReply({ message: "secret", response: { status: 404 } }), /model is not available/);
+    assert.doesNotMatch(setup.bot.getSafeErrorReply({ message: "private-api-key" }), /private-api-key/);
+  } finally {
+    if (oldKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = oldKey;
+    setup.cleanup();
+  }
+});
+
+
+test("diagnostic server logs include upstream status but redact secrets", () => {
+  const { bot, cleanup } = createTestBot();
+  const oldKey = process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY = "AIza12345678901234567890123456789012";
+  try {
+    const err = { message: "Request failed", response: { status: 400, data: { error: { message: `Invalid field for ${process.env.GEMINI_API_KEY}` } } } };
+    assert.match(bot.describeGeminiError(err), /HTTP 400/);
+    assert.match(bot.describeGeminiError(err), /REDACTED/);
+    assert.doesNotMatch(bot.describeGeminiError(err), /AIza123/);
+    assert.match(bot.getSafeErrorReply(err), /HTTP 400/);
+    assert.match(bot.getSafeErrorReply({ response: { status: 503 } }), /temporarily unavailable/);
+  } finally {
+    if (oldKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = oldKey;
+    cleanup();
+  }
+});
