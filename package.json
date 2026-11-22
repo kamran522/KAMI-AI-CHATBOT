@@ -1,7 +1,7 @@
 {
   "name": "kami-ai-chat-bot",
   "version": "2.3.0",
-  "description": "KAMI AI CHAT BOT - obfuscated auto-reply Gemini WhatsApp bot, prompt examples and API diagnostics",
+  "description": "KAMI AI CHAT BOT",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
@@ -9,7 +9,7 @@
     "test": "node --test tests/*.test.js",
     "check:gemini": "node scripts/check-gemini.js"
   },
-  "author": "Kamran Hasil (+923395267262)",
+  "author": "Kamran Hasil (+923111008401)",
   "license": "MIT",
   "dependencies": {
     "@adiwajshing/baileys": "npm:@whiskeysockets/baileys@6.7.24",
