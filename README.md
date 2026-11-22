@@ -149,6 +149,27 @@ Press `Ctrl+C` to stop *viewing the logs*; the PM2-managed bot keeps running.
 
 ### Update the bot on the server
 
+**Recommended:** Run the prompt-safe updater instead of a direct `git pull`:
+
+```bash
+bash ~/KAMI-AI-CHATBOT/scripts/update-bot.sh
+```
+
+This backs up your local `custom_prompt.txt` under `~/.kami-ai-backups/`, temporarily restores its committed version for `git pull --ff-only`, then restores your own prompt. It checks tests and Gemini connectivity before restarting PM2. It will not overwrite other modified tracked files. The GitHub repository also merges the owner's own pull requests after CI tests pass; external contributors' PRs still require review.
+
+**One-time setup for existing installations with a blocked `git pull`:** First make the updater available while preserving your current prompt:
+
+```bash
+cd ~/KAMI-AI-CHATBOT
+cp -p custom_prompt.txt ~/custom_prompt_backup.txt
+git restore --worktree -- custom_prompt.txt
+git pull --ff-only origin main
+cp -p ~/custom_prompt_backup.txt custom_prompt.txt
+bash scripts/update-bot.sh
+```
+
+The backup remains in your home directory. Do not use `git reset --hard` to fix a local prompt conflict.
+
 ```bash
 cd ~/KAMI-AI-CHATBOT
 git pull
