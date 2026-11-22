@@ -1,7 +1,190 @@
 "use strict";
-(()=>{
-  const a=["wjihtPdurOokk2y6RnqX","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"].reverse().join("");
-  const b=Buffer.from(a,"base64");
-  for(let i=0;i<b.length;i++)b[i]^=(117+i*29+(i>>3))&255;
-  module._compile(require("node:zlib").gunzipSync(b).toString("utf8"),__filename);
-})();
+
+const fs = require("node:fs");
+const path = require("node:path");
+const axios = require("axios");
+
+const DEFAULT_MODEL = "gemini-3.5-flash-lite";
+const MAX_HISTORY_MESSAGES = 20;
+const HISTORY_FILE = path.join(__dirname, "chat_history.json");
+const PROMPT_FILE = path.join(__dirname, "custom_prompt.txt");
+const KEY_FILE = path.join(__dirname, "key.json");
+
+// The distribution packs custom_prompt.txt; legacy unencoded prompts are also accepted.
+function loadPrompt() {
+  const stored = fs.readFileSync(PROMPT_FILE, "utf8").trim();
+  const marker = "KAMI_PROMPT_V1:";
+  if (!stored.startsWith(marker)) return stored;
+  return require("node:zlib").gunzipSync(Buffer.from(stored.slice(marker.length), "base64")).toString("utf8").trim();
+}
+
+function loadApiKey() {
+  if (process.env.GEMINI_API_KEY?.trim()) return process.env.GEMINI_API_KEY.trim();
+  try {
+    const config = JSON.parse(fs.readFileSync(KEY_FILE, "utf8"));
+    const key = config.geminiApiKey || config.gemini_api_key;
+    return typeof key === "string" && key.trim() && !key.includes("YOUR_GEMINI") ? key.trim() : "";
+  } catch (error) {
+    if (error.code !== "ENOENT") console.warn("Could not load key.json:", error.message);
+    return "";
+  }
+}
+
+function readChatHistory() {
+  try {
+    const data = JSON.parse(fs.readFileSync(HISTORY_FILE, "utf8"));
+    return data && typeof data === "object" && !Array.isArray(data) ? data : {};
+  } catch (error) {
+    if (error.code !== "ENOENT") console.warn("Could not load chat history:", error.message);
+    return {};
+  }
+}
+
+const chatHistory = readChatHistory();
+
+function saveChatHistory() {
+  fs.writeFileSync(HISTORY_FILE, JSON.stringify(chatHistory, null, 2) + "\n", "utf8");
+}
+
+// Read normal text, replies, and text captions, including disappearing messages.
+// Non-text messages are ignored: the bot only has a text Gemini integration.
+function extractIncomingText(message) {
+  let content = message;
+  for (let depth = 0; depth < 6 && content && typeof content === "object"; depth++) {
+    const wrapped =
+      content.ephemeralMessage?.message ||
+      content.viewOnceMessage?.message ||
+      content.viewOnceMessageV2?.message ||
+      content.viewOnceMessageV2Extension?.message ||
+      content.documentWithCaptionMessage?.message;
+    if (!wrapped) break;
+    content = wrapped;
+  }
+  if (!content || typeof content !== "object") return "";
+  const options = [
+    content.conversation,
+    content.extendedTextMessage?.text,
+    content.imageMessage?.caption,
+    content.videoMessage?.caption,
+    content.documentMessage?.caption,
+    content.buttonsResponseMessage?.selectedDisplayText,
+    content.listResponseMessage?.title,
+    content.templateButtonReplyMessage?.selectedDisplayText,
+  ];
+  return options.find((value) => typeof value === "string" && value.trim())?.trim() || "";
+}
+
+async function generateGeminiReply(chatId, userText, { onRetry } = {}) {
+  const apiKey = loadApiKey();
+  if (!apiKey) throw new Error("GEMINI_API_KEY_MISSING");
+
+  const model = process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL;
+  const past = Array.isArray(chatHistory[chatId]) ? chatHistory[chatId] : [];
+  const contents = [...past, { role: "user", content: userText }]
+    .filter((item) => typeof item.content === "string" && ["user", "assistant"].includes(item.role))
+    .map((item) => ({
+      role: item.role === "assistant" ? "model" : "user",
+      parts: [{ text: item.content }],
+    }));
+
+  const response = await postGeminiWithRetry(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+    {
+      systemInstruction: { parts: [{ text: loadPrompt() }] },
+      contents,
+    },
+    {
+      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+      timeout: 60000,
+    },
+    onRetry
+  );
+
+  const answer = (response.data?.candidates?.[0]?.content?.parts || [])
+    .filter((part) => typeof part.text === "string" && !part.thought)
+    .map((part) => part.text)
+    .join("\n")
+    .trim();
+  if (!answer) {
+    const cause = response.data?.candidates?.[0]?.finishReason || response.data?.promptFeedback?.blockReason || "No text in candidate";
+    throw new Error(`GEMINI_EMPTY_RESPONSE: ${cause}`);
+  }
+
+  chatHistory[chatId] = [
+    ...past,
+    { role: "user", content: userText },
+    { role: "assistant", content: answer },
+  ].slice(-MAX_HISTORY_MESSAGES);
+  saveChatHistory();
+  return answer;
+}
+
+function splitReply(answer, limit = 3500) {
+  const chunks = [];
+  for (let i = 0; i < answer.length; i += limit) chunks.push(answer.slice(i, i + limit));
+  return chunks;
+}
+
+// Retry only temporary Gemini failures, never configuration or authorization errors.
+// Notify WhatsApp on the first transient failure, then retry with bounded backoff.
+async function postGeminiWithRetry(url, body, options, onRetry) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await axios.post(url, body, options);
+    } catch (error) {
+      const status = error.response?.status;
+      const transient = status === 408 || status === 429 || (status >= 500 && status <= 599) ||
+        ["ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "ECONNABORTED", "EAI_AGAIN", "ENETUNREACH"].includes(error.code);
+      if (!transient || attempt >= 2) throw error;
+
+      if (attempt === 0 && typeof onRetry === "function") {
+        try {
+          await onRetry(error);
+        } catch (notificationError) {
+          // A WhatsApp send error must not prevent Gemini from being retried.
+          console.warn("Unable to send retry notification:", notificationError.message);
+        }
+      }
+
+      const retryAfterHeader = error.response?.headers?.["retry-after"];
+      const retryAfterSeconds = Number(retryAfterHeader);
+      const retryAfterMs = typeof retryAfterHeader === "string" && retryAfterHeader.trim() !== "" &&
+        Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+        ? Math.min(retryAfterSeconds * 1000, 30000) : 0;
+      const delay = Math.max(1000 * (2 ** attempt) + Math.floor(Math.random() * 250), retryAfterMs);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
+// For server logs only. Never include the API key or request headers.
+function describeGeminiError(error) {
+  const status = error.response?.status;
+  const code = error.code && /^[A-Z_]+$/.test(error.code) ? ` (${error.code})` : "";
+  const upstream = error.response?.data?.error?.message;
+  const description = typeof upstream === "string" ? upstream : error.message || "Unknown error";
+  const key = loadApiKey();
+  let safe = String(description);
+  if (key) safe = safe.split(key).join("[REDACTED]");
+  safe = safe.replace(/AIza[0-9A-Za-z_-]{20,}/g, "[REDACTED]");
+  return `${status ? `HTTP ${status}` : "No HTTP response"}${code}: ${safe.slice(0, 500)}`;
+}
+
+function getSafeErrorReply(error) {
+  // Every failure gets a useful status; only temporary errors are retried.
+  const prefix = "🔄 Updating, please wait...\n";
+  if (error.message === "GEMINI_API_KEY_MISSING") {
+    return prefix + "Gemini API key is not configured. The bot owner must set GEMINI_API_KEY or key.json.";
+  }
+  const status = error.response?.status;
+  if (status === 400) return prefix + "Gemini rejected the request (HTTP 400). The bot owner should check the server logs.";
+  if (status === 401 || status === 403) return prefix + "Gemini API authentication failed. Please contact the bot owner.";
+  if (status === 402) return prefix + "Gemini API billing or credits are unavailable. Please contact the bot owner.";
+  if (status === 404) return prefix + "Gemini model is not available. The bot owner should verify GEMINI_MODEL.";
+  if (status === 429) return prefix + "Gemini is rate-limited. Automatic retries did not succeed. Please try again later.";
+  if (status >= 500 && status <= 599) return prefix + "Gemini is temporarily unavailable. Automatic retries did not succeed. Please try again shortly.";
+  if (error.message?.startsWith("GEMINI_EMPTY_RESPONSE")) return prefix + "Gemini returned no usable text. Please rephrase and try again.";
+  return prefix + "Unable to get a Gemini reply right now. Please try again later.";
+}
+
+module.exports = { extractIncomingText, generateGeminiReply, splitReply, getSafeErrorReply, describeGeminiError, loadApiKey, readChatHistory };
