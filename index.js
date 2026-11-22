@@ -1,7 +1,116 @@
 "use strict";
-(()=>{
-  const a=["wa0VdYiORyePz3aDoA==","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"].reverse().join("");
-  const b=Buffer.from(a,"base64");
-  for(let i=0;i<b.length;i++)b[i]^=(108+i*29+(i>>3))&255;
-  module._compile(require("node:zlib").gunzipSync(b).toString("utf8"),__filename);
-})();
+
+const BOT_NAME = "KAMI AI CHAT BOT";
+const OWNER_NAME = "Kamran Hasil";
+const OWNER_PHONE = "923395267262";
+const SESSION_NAME = "kami-ai-session";
+
+const {
+  default: makeWASocket,
+  useMultiFileAuthState,
+  DisconnectReason,
+  fetchLatestBaileysVersion,
+} = require("@adiwajshing/baileys");
+const pino = require("pino");
+const qrcode = require("qrcode-terminal");
+const { extractIncomingText, generateGeminiReply, splitReply, getSafeErrorReply, describeGeminiError } = require("./kami");
+
+async function startKamiBot() {
+  const { state, saveCreds } = await useMultiFileAuthState(`./${SESSION_NAME}`);
+  const { version } = await fetchLatestBaileysVersion();
+  const client = makeWASocket({
+    logger: pino({ level: "silent" }),
+    browser: [BOT_NAME, "Chrome", "120.0.0"],
+    version,
+    auth: state,
+  });
+
+  // Responses are serialized per chat to keep conversation history in order.
+  const pendingChats = new Map();
+  // Prevent a repeated event from producing duplicate replies; bound memory usage.
+  const recentMessages = new Set();
+
+  client.ev.on("messages.upsert", (chatUpdate) => {
+    // "append" is old chat history being synchronized, not a new message.
+    if (chatUpdate.type && chatUpdate.type !== "notify") return;
+    for (const message of chatUpdate.messages || []) {
+      const jid = message.key?.remoteJid;
+      if (!jid || !message.message || message.key?.fromMe) continue;
+      if (jid === "status@broadcast" || jid.endsWith("@broadcast") || jid.endsWith("@newsletter")) continue;
+
+      const text = extractIncomingText(message.message);
+      if (!text) continue;
+
+      const messageId = message.key?.id;
+      if (messageId) {
+        const identifier = `${jid}:${messageId}`;
+        if (recentMessages.has(identifier)) continue;
+        recentMessages.add(identifier);
+        if (recentMessages.size > 1000) recentMessages.delete(recentMessages.values().next().value);
+      }
+
+      const previous = pendingChats.get(jid) || Promise.resolve();
+      const task = previous.catch(() => {}).then(async () => {
+        try {
+          // No prefix, mention, command, or owner check: ALL new incoming text is sent to Gemini.
+          const answer = await generateGeminiReply(jid, text, {
+            // Sent only on the first temporary failure; retrying happens in kami.js.
+            onRetry: async (retryError) => {
+              console.warn("Gemini request failed temporarily; retrying:", describeGeminiError(retryError));
+              await client.sendMessage(
+                jid,
+                { text: "🔄 Updating, please wait... I'm retrying your message." },
+                { quoted: message }
+              );
+            },
+          });
+          for (const chunk of splitReply(answer)) {
+            await client.sendMessage(jid, { text: chunk }, { quoted: message });
+          }
+        } catch (error) {
+          console.error("Gemini auto-reply failed:", describeGeminiError(error));
+          try {
+            await client.sendMessage(jid, { text: getSafeErrorReply(error) }, { quoted: message });
+          } catch (sendError) {
+            console.error("Could not send error reply:", sendError.message);
+          }
+        }
+      });
+      pendingChats.set(jid, task);
+      void task.finally(() => {
+        if (pendingChats.get(jid) === task) pendingChats.delete(jid);
+      });
+    }
+  });
+
+  client.ev.on("creds.update", saveCreds);
+  client.ev.on("connection.update", async ({ connection, lastDisconnect, qr }) => {
+    if (qr) {
+      console.log("Scan this QR code in WhatsApp > Linked Devices:");
+      qrcode.generate(qr, { small: true });
+    }
+    if (connection === "open") {
+      console.log(`${BOT_NAME} connected. Owner: ${OWNER_NAME}, WhatsApp: +${OWNER_PHONE}`);
+      try {
+        await client.sendMessage(`${OWNER_PHONE}@s.whatsapp.net`, {
+          text: `${BOT_NAME} started!\nOwner: ${OWNER_NAME}\nWhatsApp: +${OWNER_PHONE}\nAuto-reply: ON (all incoming text)`,
+        });
+      } catch (error) {
+        console.error("Unable to send startup notification:", error.message);
+      }
+    }
+    if (connection === "close") {
+      const reason = lastDisconnect?.error?.output?.statusCode;
+      if ([DisconnectReason.loggedOut, DisconnectReason.badSession, DisconnectReason.connectionReplaced].includes(reason)) {
+        console.error("Session ended or replaced. Please log in again if necessary.");
+        return;
+      }
+      console.log("WhatsApp connection closed. Reconnecting...");
+      setTimeout(() => startKamiBot().catch(console.error), 2000);
+    }
+  });
+  return client;
+}
+
+if (require.main === module) startKamiBot().catch(console.error);
+module.exports = { startKamiBot };
