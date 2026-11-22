@@ -13,4 +13,26 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - run: bash -n scripts/update-bot.sh
       - run: npm test
+
+  auto-merge:
+    needs: test
+    # Only merge the owner's own branches inside this repository, after tests pass.
+    # External contributor PRs still require manual review.
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.user.login == 'kamran522' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Merge successful owner pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: gh pr merge "$PR_NUMBER" --merge --match-head-commit "$HEAD_SHA"
