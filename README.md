@@ -13,7 +13,8 @@ A WhatsApp auto-reply bot powered by Google Gemini and Baileys. Incoming text me
 - Recent conversation context per chat
 - WhatsApp QR-code pairing
 - Gemini connection diagnostics via `npm run check:gemini`
-- Obfuscated application source (not a substitute for access controls)
+- Automatic retry notifications: the bot says “🔄 Updating, please wait...” when Gemini has a temporary outage
+- Clearer final error messages and server-side diagnostic details
 
 > **Note:** The prompt contains examples of searches, appointments, and reminders. Those actions are not standalone integrations in this repository. Automatic replies require a working Gemini API key, internet connection, and a connected WhatsApp session.
 
@@ -62,6 +63,14 @@ If needed, select a different model for a single command:
 ```bash
 GEMINI_MODEL=gemini-3.5-flash-lite npm run check:gemini
 ```
+
+## What happens when Gemini fails
+
+When Gemini returns a temporary HTTP 429, HTTP 5xx, timeout, or certain network errors, the bot sends a **“🔄 Updating, please wait...”** WhatsApp message (once per incoming request) and retries up to **two additional times**, using backoff and honoring short `Retry-After` delays. If a retry succeeds, the normal AI answer follows.
+
+If the retries fail, or the error is permanent (invalid key, unavailable model, billing issue), the bot sends an error message starting with **“🔄 Updating, please wait...”** and including a short explanation. Permanent errors **are not fixed automatically**. Check the server logs and correct the cause before expecting normal responses. The bot does not endlessly retry and does not automatically resend a failed question after its retries are exhausted.
+
+Run `npm test` to check the bot’s message handling and retry behavior without a live Gemini API key. Run `npm run check:gemini` on the server with a real key to determine whether Gemini access works.
 
 ## Start the bot manually
 
