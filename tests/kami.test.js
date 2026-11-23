@@ -84,6 +84,18 @@ test("any message text including command-like text is sent to Gemini and history
   }
 });
 
+test("missing Gemini key error also tells users how to configure API Route for text", () => {
+  const setup = createTestBot();
+  try {
+    const reply = setup.bot.getSafeErrorReply(new Error("GEMINI_API_KEY_MISSING"));
+    assert.match(reply, /API_ROUTE_KEY/);
+    assert.match(reply, /apiRouteApiKey/);
+    assert.match(reply, /voice notes still require a Gemini API key/i);
+  } finally {
+    setup.cleanup();
+  }
+});
+
 test("API key is required, long replies split, and errors are not leaked", async () => {
   const setup = createTestBot();
   const oldKey = process.env.GEMINI_API_KEY;
