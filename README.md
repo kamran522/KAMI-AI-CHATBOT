@@ -9,7 +9,8 @@ A WhatsApp auto-reply bot powered by Google Gemini and Baileys. Incoming text me
 ## Features
 
 - Automatic replies to incoming WhatsApp text in private chats and groups
-- WhatsApp voice-note replies: Gemini transcribes voice messages and responds with a WhatsApp voice note (OGG/Opus)
+- Faster WhatsApp voice-note replies: one Gemini audio request understands the note and drafts its response; a second request generates the voice (OGG/Opus)
+- Optional auto-answering WhatsApp Business Calling integration using Twilio ConversationRelay (separate from Baileys/Linked Devices)
 - Keeps conversation context between voice notes and text; text answers are used as a fallback if speech synthesis fails
 - Google Gemini integration and a custom bot personality/prompt
 - Recent conversation context per chat
@@ -79,9 +80,9 @@ Run `npm test` to check the bot’s message handling and retry behavior without 
 
 Voice notes sent to the bot (WhatsApp push-to-talk audio, including disappearing voice notes) are processed automatically in private chats and groups. Audio files sent as attachments are not processed as voice notes.
 
-1. The bot downloads an incoming voice note in memory and asks Gemini to transcribe it in the original language.
-2. The transcript enters the existing chat context, and Gemini writes a concise response in the user's language.
-3. Gemini Text-to-Speech speaks the response. FFmpeg converts its WAV output to OGG/Opus, and Baileys sends it with `ptt: true` so WhatsApp displays a voice message.
+1. The bot downloads an incoming voice note in memory. **One Gemini request** transcribes it and produces the conversational answer in the user's language (previously two requests).
+2. The transcript and answer enter the existing conversation context.
+3. Gemini Text-to-Speech speaks a concise response (450-character maximum). FFmpeg converts its WAV output to OGG/Opus, and Baileys sends it with `ptt: true` so WhatsApp displays a voice message.
 4. If speech synthesis or FFmpeg fails, the bot sends the **text answer** instead. If transcription fails, it sends a short error message. Large notes (over **8 MB** or **3 minutes**) are rejected.
 
 Install FFmpeg on the Linux server before starting the bot:
@@ -100,11 +101,75 @@ The existing `GEMINI_API_KEY` or `key.json` is reused. Optional environment vari
 | `GEMINI_TTS_MODEL` | `gemini-3.8-flash-lite-tts` | Speech synthesis via Gemini Interactions API |
 | `GEMINI_TTS_VOICE` | `Kore` | Synthetic voice |
 
+Voice synthesis defaults to a 14-second deadline, after which the bot returns the text answer instead of continuing long TTS retries. Adjust with `VOICE_TTS_TIMEOUT_MS` (milliseconds, allowed range 3000–60000). This is an upper bound on the **TTS request**, not a total response-time guarantee.
+
 The selected models must be available to your Gemini API key. Voice recognition and TTS each make an additional Gemini API request and can use quota or paid credits. The existing `npm run check:gemini` command tests text generation only; it does not verify TTS model access.
 
 **Privacy:** Incoming voice-note bytes are sent to Google's Gemini API for transcription and processed in memory rather than stored locally. The resulting transcript is saved in the same `chat_history.json` file used for text conversations. Use this bot only where participants understand voice notes will be processed by Gemini.
 
 **Limitations:** Voice notes are limited to 8 MB and 3 minutes. Long answers are spoken in shortened form and followed by the full text. Actual voice synthesis depends on the external Gemini TTS model; it cannot be guaranteed offline.
+
+## Optional: Answer live WhatsApp Business calls with KAMI AI
+
+**This feature is NOT supported by the current WhatsApp Linked Devices/Baileys session.** It uses a **separate** Twilio Programmable Voice and WhatsApp Business Calling integration. Your WhatsApp sender must be enabled for Business Calling through Twilio/Meta. You may need to migrate the number to the Business Platform; verify compatibility before changing or disconnecting your existing WhatsApp bot. Installing this repository by itself **will not** make personal WhatsApp calls auto-answer.
+
+For qualifying numbers, Twilio sends incoming WhatsApp calls to a Voice webhook. KAMI answers with a ConversationRelay session: Twilio handles live speech recognition and speech synthesis; Gemini **streams text tokens** to Twilio as they are generated. Callers can interrupt the AI and continue speaking, using short per-call conversation history in memory. This avoids waiting for a full Gemini speech file before the bot speaks.
+
+### Prerequisites
+
+- A Twilio account with a WhatsApp Business sender registered and enabled for voice calling
+- Twilio ConversationRelay access and acceptance of Twilio's generative AI terms
+- A publicly reachable HTTPS hostname with valid TLS; **both HTTPS and WSS** forwarded to the call service
+- Node.js 18+ and `npm install`; your existing Gemini key, accessible to this process
+- An HTTPS proxy (such as nginx) to `127.0.0.1:3001` with WebSocket upgrades enabled
+
+### Configure
+
+Set these variables securely in the call server's environment, **never** in the public repository:
+
+| Name | Example or default | Purpose |
+| --- | --- | --- |
+| `TWILIO_ACCOUNT_SID` | `AC...` | The Twilio account that owns the sender |
+| `TWILIO_AUTH_TOKEN` | Secret | Verifies signed Twilio webhook and WebSocket requests |
+| `CALL_PUBLIC_BASE_URL` | `https://calls.example.com` | Public HTTPS origin, **without trailing path** |
+| `CALL_PORT` | `3001` | Local HTTP/WebSocket port |
+| `CALL_HOST` | `127.0.0.1` | Bind to localhost behind a TLS reverse proxy |
+| `CALL_LANGUAGE` | `en-US` | Speech recognition and TTS locale supported by your Twilio setup |
+| `GEMINI_CALL_MODEL` | `GEMINI_MODEL` (or the default model) | Fast streaming answer generation |
+| `GEMINI_API_KEY` | Existing Gemini key | Used when `key.json` is not present |
+
+The public endpoints are:
+
+- **POST `https://calls.example.com/calls/incoming`** — signed Twilio Voice webhook that answers using TwiML.
+- **WSS `wss://calls.example.com/calls/relay`** — signed real-time ConversationRelay WebSocket.
+- **GET `/healthz`** — simple server health check.
+
+Configure the voice-capable Twilio WhatsApp sender to use a TwiML app with the Voice URL `https://calls.example.com/calls/incoming` (HTTP POST). Configure your reverse proxy to forward both paths, preserve WebSocket upgrade headers, and terminate TLS. The service rejects unsigned requests; do not bypass this check. Twilio authentication uses the *public* URL when validating signatures, so `CALL_PUBLIC_BASE_URL` must exactly match the hostname used in Twilio.
+
+Start the call service in a **separate process** only after configuration:
+
+```bash
+cd ~/KAMI-AI-CHATBOT
+npm install
+npm run start:calls
+```
+
+To run it under PM2 instead:
+
+```bash
+pm2 start call-service.js --name kami-ai-calls --time
+pm2 save
+```
+
+This does not start or replace your existing `kami-ai-chat-bot` process. If you change environment variables, restart `kami-ai-calls` with `--update-env`. **Do not start the call service without the required Twilio credentials or enable it on a non-voice-capable sender.**
+
+### Latency, costs and privacy
+
+Live calls use Twilio's streaming speech services and Gemini text generation. This should respond sooner than the voice-note pipeline that creates an audio file, but speed depends on network, language, and provider capacity; it is not a guaranteed fixed delay. Twilio Business Calling and ConversationRelay can incur separate charges from Gemini.
+
+Caller transcripts are processed by Twilio and Gemini and kept in this process's memory during the call (not written to `chat_history.json`). Provide an AI disclosure to callers and inform them about third-party voice processing. No call recording is enabled in this code.
+
+For setup and eligibility, see the official [Twilio WhatsApp Business Calling guide](https://www.twilio.com/docs/voice/whatsapp-business-calling), [ConversationRelay setup](https://www.twilio.com/docs/voice/conversationrelay/onboarding), and [WebSocket message reference](https://www.twilio.com/docs/voice/conversationrelay/websocket-messages).
 
 ## Start the bot manually
 
