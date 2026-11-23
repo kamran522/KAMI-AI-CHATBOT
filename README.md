@@ -77,6 +77,25 @@ This file is ignored by Git; protect it with `chmod 600 ~/KAMI-AI-CHATBOT/key.js
 
 **When an API Route key is configured, normal text messages use API Route.** Without one, the bot continues to use Gemini. Voice-note recognition and speech synthesis **still use your direct Gemini API key**, since API Route's OpenAI-compatible chat endpoint does not guarantee native Gemini audio and TTS compatibility.
 
+### Check which API key the bot can see
+
+Run this **from your server** after adding your private key. It never prints a key value:
+
+```bash
+cd ~/KAMI-AI-CHATBOT
+npm run check:providers
+```
+
+`API Route: CONFIGURED` means the bot found your API Route key. `Gemini: MISSING` is acceptable for **text-only** replies, but voice notes still need a Gemini key. When both providers are missing, check that your key is in `~/KAMI-AI-CHATBOT/key.json` as `apiRouteApiKey`, or set `API_ROUTE_KEY` in the bot process's environment. If `key.json` was edited, confirm that its JSON syntax is valid.
+
+To confirm the actual running PM2 process uses this directory, run:
+
+```bash
+pm2 describe kami-ai-chat-bot
+```
+
+If it points to a different folder, update or reconfigure that process rather than assuming it uses `~/KAMI-AI-CHATBOT`.
+
 ### Check the API key and change models
 
 ```bash
