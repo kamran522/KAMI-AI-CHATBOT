@@ -417,7 +417,7 @@ function getSafeErrorReply(error) {
   if (error.message === "VOICE_UNSUPPORTED_FORMAT")
     return "This voice-note format is not supported. Please send a normal WhatsApp voice note.";
   if (error.message === "GEMINI_API_KEY_MISSING") {
-    return prefix + "No usable AI key found for this request. For text replies, configure API_ROUTE_KEY " +
+    return prefix + "An AI API key is not configured for this request. For text replies, configure API_ROUTE_KEY " +
       "(or apiRouteApiKey in key.json), or configure GEMINI_API_KEY. WhatsApp voice notes still require a Gemini API key.";
   }
   const status = error.response?.status;
