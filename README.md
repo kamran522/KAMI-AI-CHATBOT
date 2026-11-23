@@ -81,7 +81,7 @@ Voice notes sent to the bot (WhatsApp push-to-talk audio, including disappearing
 
 1. The bot downloads an incoming voice note in memory. **One Gemini request** transcribes it and produces the conversational answer in the user's language (previously two requests).
 2. The transcript and answer enter the existing conversation context.
-3. Gemini Text-to-Speech speaks a concise response (220-character default limit (configurable)). FFmpeg converts its WAV output to OGG/Opus, and Baileys sends it with `ptt: true` so WhatsApp displays a voice message.
+3. Gemini Text-to-Speech speaks a concise response (default limit of 220 characters). FFmpeg converts its WAV output to OGG/Opus, and Baileys sends it with `ptt: true` so WhatsApp displays a voice message.
 4. If speech synthesis or FFmpeg fails, the bot sends the **text answer** instead. If transcription fails, it sends a short error message. Large notes (over **8 MB** or **3 minutes**) are rejected.
 
 Install FFmpeg on the Linux server before starting the bot:
