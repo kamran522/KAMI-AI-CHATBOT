@@ -3,12 +3,16 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const axios = require("axios");
+const https = require("node:https");
 
 const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 const MAX_HISTORY_MESSAGES = 20;
 const DEFAULT_TTS_MODEL = "gemini-3.8-flash-lite-tts";
 // Keep spoken WhatsApp replies short so TTS and file transfer complete sooner.
-const MAX_SPOKEN_CHARS = 450;
+const MAX_SPOKEN_CHARS = Math.floor(Math.min(450, Math.max(120, Number(process.env.VOICE_MAX_SPOKEN_CHARS) || 220)));
+const VOICE_HISTORY_MESSAGES = 8;
+// Reuse TLS connections across the two Gemini requests on Node.js 18 and later.
+const voiceHttpsAgent = new https.Agent({ keepAlive: true, maxSockets: 8, maxFreeSockets: 4 });
 const HISTORY_FILE = path.join(__dirname, "chat_history.json");
 const PROMPT_FILE = path.join(__dirname, "custom_prompt.txt");
 const KEY_FILE = path.join(__dirname, "key.json");
@@ -149,7 +153,8 @@ async function generateVoiceAnswer(chatId, audioBuffer, mimeType, { onRetry } = 
 
   const model = process.env.GEMINI_AUDIO_MODEL?.trim() || process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL;
   const past = Array.isArray(chatHistory[chatId]) ? chatHistory[chatId] : [];
-  const contents = past
+  // A small recent-context window reduces voice request size and processing time.
+  const contents = past.slice(-VOICE_HISTORY_MESSAGES)
     .filter((item) => typeof item.content === "string" && ["user", "assistant"].includes(item.role))
     .map((item) => ({
       role: item.role === "assistant" ? "model" : "user",
@@ -161,7 +166,7 @@ async function generateVoiceAnswer(chatId, audioBuffer, mimeType, { onRetry } = 
       {
         text: "Listen to this WhatsApp voice note and respond to the speaker in their original language. "
           + "Return a JSON object with exactly two string fields: transcript (the user's words) "
-          + "and answer (your helpful answer, ideally 1-2 short spoken sentences, at most 350 characters). "
+          + "and answer (a useful, direct reply in one or two short sentences, ideally under 180 characters). "
           + "Return transcript as NO_SPEECH if the audio is not understandable. Do not translate the transcript.",
       },
       { inlineData: { mimeType, data: audioBuffer.toString("base64") } },
@@ -191,6 +196,7 @@ async function generateVoiceAnswer(chatId, audioBuffer, mimeType, { onRetry } = 
     {
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
       timeout: 45000,
+      httpsAgent: voiceHttpsAgent,
     },
     onRetry
   );
@@ -283,6 +289,7 @@ async function synthesizeVoiceReply(answer, { onRetry } = {}) {
       // Do not allow two more long retries on speech synthesis: prefer a fast text fallback.
       timeout: Math.min(60000, Math.max(3000, Number(process.env.VOICE_TTS_TIMEOUT_MS) || 14000)),
       maxContentLength: 12 * 1024 * 1024,
+      httpsAgent: voiceHttpsAgent,
     },
     onRetry,
     0
