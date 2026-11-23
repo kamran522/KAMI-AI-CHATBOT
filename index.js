@@ -89,7 +89,7 @@ async function startKamiBot() {
                 { quoted: message }
               );
               // A long answer is spoken in shortened form; send full details as text.
-              if (getSpeechText(answer).length < answer.trim().length) {
+              if (getSpeechText(answer) !== answer.trim()) {
                 for (const chunk of splitReply(answer)) {
                   await client.sendMessage(jid, { text: chunk }, { quoted: message });
                 }
