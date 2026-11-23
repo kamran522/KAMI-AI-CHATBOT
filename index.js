@@ -19,6 +19,7 @@ const {
   describeGeminiError, generateVoiceAnswer, synthesizeVoiceReply, getSpeechText,
 } = require("./kami");
 const { extractIncomingVoiceNote, validateVoiceNote, wavToWhatsAppVoiceNote } = require("./voice");
+const { runModelCommand } = require("./api-route");
 
 async function startKamiBot() {
   const { state, saveCreds } = await useMultiFileAuthState(`./${SESSION_NAME}`);
@@ -60,7 +61,7 @@ async function startKamiBot() {
         try {
           let hasNotifiedRetry = false;
           const onRetry = async (retryError) => {
-            console.warn("Gemini request failed temporarily; retrying:", describeGeminiError(retryError));
+            console.warn("AI request failed temporarily; retrying:", describeGeminiError(retryError));
             if (hasNotifiedRetry) return;
             hasNotifiedRetry = true;
             await client.sendMessage(
@@ -123,8 +124,12 @@ async function startKamiBot() {
               }
             }
           } else {
-            // Keep automatic text replies unchanged.
-            const answer = await generateGeminiReply(jid, text, { onRetry });
+            // /models and /model are explicit API Route commands; all other
+            // incoming text keeps the normal automatic reply behavior.
+            const commandReply = await runModelCommand(jid, text);
+            const answer = commandReply === null
+              ? await generateGeminiReply(jid, text, { onRetry })
+              : commandReply;
             for (const chunk of splitReply(answer)) {
               await client.sendMessage(jid, { text: chunk }, { quoted: message });
             }
