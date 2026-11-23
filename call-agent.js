@@ -37,7 +37,7 @@ async function* streamCallAnswer(history, { signal, fetchImpl = globalThis.fetch
   }));
   const model = getCallModel();
   const response = await fetchImpl(
-    \`https://generativelanguage.googleapis.com/v1beta/models/\${encodeURIComponent(model)}:streamGenerateContent?alt=sse\`,
+    "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":streamGenerateContent?alt=sse",
     {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
