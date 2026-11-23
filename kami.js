@@ -262,8 +262,25 @@ async function transcribeVoiceNote(audioBuffer, mimeType, { onRetry } = {}) {
   return transcript;
 }
 
-// Gemini 3.8 speech uses the Interactions API; its unary output is a complete
-// WAV file, which voice.js converts to the OGG/Opus format required by WhatsApp.
+// Gemini 3.8 speech uses the Interactions API; unary requests return complete WAV.
+// REST responses expose the audio in steps[].content[].data. Some SDK-compatible
+// response shapes use output_audio.data instead; accept both without decoding twice.
+function extractTtsWav(data) {
+  const stepAudio = (data?.steps || [])
+    .filter((step) => step.type === "model_output")
+    .flatMap((step) => step.content || [])
+    .filter((part) => part.type === "audio" && typeof part.data === "string")
+    .at(-1);
+  const encoded = stepAudio?.data || data?.output_audio?.data || data?.outputAudio?.data;
+  if (typeof encoded !== "string" || !encoded) throw new Error("GEMINI_TTS_EMPTY_RESPONSE");
+  const audio = Buffer.from(encoded, "base64");
+  if (audio.length > 8 * 1024 * 1024) throw new Error("VOICE_OUTPUT_TOO_LARGE");
+  if (audio.length < 44 || audio.toString("ascii", 0, 4) !== "RIFF" ||
+      audio.toString("ascii", 8, 12) !== "WAVE") {
+    throw new Error("GEMINI_TTS_INVALID_AUDIO");
+  }
+  return audio;
+}
 async function synthesizeVoiceReply(answer, { onRetry } = {}) {
   const apiKey = loadApiKey();
   if (!apiKey) throw new Error("GEMINI_API_KEY_MISSING");
@@ -287,24 +304,14 @@ async function synthesizeVoiceReply(answer, { onRetry } = {}) {
     {
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
       // Do not allow two more long retries on speech synthesis: prefer a fast text fallback.
-      timeout: Math.min(60000, Math.max(3000, Number(process.env.VOICE_TTS_TIMEOUT_MS) || 14000)),
+      timeout: Math.min(60000, Math.max(3000, Number(process.env.VOICE_TTS_TIMEOUT_MS) || 25000)),
       maxContentLength: 12 * 1024 * 1024,
       httpsAgent: voiceHttpsAgent,
     },
     onRetry,
     0
   );
-  const audioBlock = (response.data?.steps || [])
-    .filter((step) => step.type === "model_output")
-    .flatMap((step) => step.content || [])
-    .filter((part) => part.type === "audio" && typeof part.data === "string")
-    .at(-1);
-  if (!audioBlock?.data) throw new Error("GEMINI_TTS_EMPTY_RESPONSE");
-  const audio = Buffer.from(audioBlock.data, "base64");
-  if (!audio.length || audio.length > 8 * 1024 * 1024) {
-    throw new Error("VOICE_OUTPUT_TOO_LARGE");
-  }
-  return audio;
+  return extractTtsWav(response.data);
 }
 
 function splitReply(answer, limit = 3500) {
@@ -384,5 +391,5 @@ function getSafeErrorReply(error) {
 module.exports = {
   extractIncomingText, generateGeminiReply, splitReply, getSafeErrorReply,
   describeGeminiError, loadApiKey, readChatHistory, transcribeVoiceNote,
-  synthesizeVoiceReply, getSpeechText, generateVoiceAnswer,
+  synthesizeVoiceReply, getSpeechText, generateVoiceAnswer, extractTtsWav,
 };

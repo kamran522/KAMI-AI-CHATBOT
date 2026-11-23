@@ -294,3 +294,22 @@ test("fast voice rejects unintelligible speech and empty model answers", async (
     } finally { fixture.cleanup(); }
   });
 });
+
+test("Gemini TTS parses both Interactions audio shapes and rejects bad audio", async () => {
+  const wav = makeWav();
+  const fixture = makeGeminiFixture(async () => ({ data: {} }));
+  try {
+    const encoded = wav.toString("base64");
+    assert.deepEqual(fixture.api.extractTtsWav({
+      steps: [{ type: "model_output", content: [{ type: "audio", data: encoded }] }],
+    }), wav);
+    assert.deepEqual(fixture.api.extractTtsWav({ output_audio: { data: encoded } }), wav);
+    assert.deepEqual(fixture.api.extractTtsWav({ outputAudio: { data: encoded } }), wav);
+    assert.throws(() => fixture.api.extractTtsWav({ steps: [] }), /GEMINI_TTS_EMPTY_RESPONSE/);
+    assert.throws(() => fixture.api.extractTtsWav({
+      output_audio: { data: Buffer.from("not-wave").toString("base64") },
+    }), /GEMINI_TTS_INVALID_AUDIO/);
+  } finally {
+    fixture.cleanup();
+  }
+});
