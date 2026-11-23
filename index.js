@@ -73,20 +73,33 @@ async function startKamiBot() {
           if (voiceNote) {
             const mimeType = validateVoiceNote(voiceNote);
             // Keep media in memory, with Baileys handling expired media re-uploads.
+            const startedDownloading = Date.now();
             const audio = await downloadMediaMessage(
               message, "buffer", {},
               { logger: pino({ level: "silent" }), reuploadRequest: client.updateMediaMessage }
             );
+            const downloadedMs = Date.now() - startedDownloading;
             // Single multimodal request replaces separate transcription + reply calls.
+            const startedGemini = Date.now();
             const answer = await generateVoiceAnswer(jid, audio, mimeType, { onRetry });
+            const aiMs = Date.now() - startedGemini;
 
             try {
+              const startedSpeech = Date.now();
               const wav = await synthesizeVoiceReply(answer, { onRetry });
+              const ttsMs = Date.now() - startedSpeech;
+              const startedEncoding = Date.now();
               const ogg = await wavToWhatsAppVoiceNote(wav);
+              const encodeMs = Date.now() - startedEncoding;
+              const startedSending = Date.now();
               await client.sendMessage(
                 jid,
                 { audio: ogg, ptt: true, mimetype: "audio/ogg; codecs=opus" },
                 { quoted: message }
+              );
+              console.info(
+                `Voice-note timings (ms): download=${downloadedMs}, ai=${aiMs}, tts=${ttsMs}, ` +
+                `encode=${encodeMs}, send=${Date.now() - startedSending}`
               );
               // A long answer is spoken in shortened form; send full details as text.
               if (getSpeechText(answer) !== answer.trim()) {
