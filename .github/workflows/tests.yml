@@ -20,7 +20,7 @@ jobs:
         if: github.event_name == 'push'
         run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg
       - run: npm install --ignore-scripts --no-audit --no-fund
-      - run: node --check voice.js && node --check kami.js && node --check index.js && node --check scripts/check-voice.js && node --check api-route.js && node --check scripts/check-api-route.js
+      - run: node --check voice.js && node --check kami.js && node --check index.js && node --check scripts/check-voice.js && node --check api-route.js && node --check scripts/check-api-route.js && node --check scripts/check-providers.js
       - run: npm test
 
   auto-merge:
