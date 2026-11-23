@@ -168,7 +168,7 @@ async function transcribeVoiceNote(audioBuffer, mimeType, { onRetry } = {}) {
     .filter((part) => typeof part.text === "string" && !part.thought)
     .map((part) => part.text)
     .join(" ").trim();
-  if (!transcript || /^NO_SPEECH[.!\\s]*$/i.test(transcript)) {
+  if (!transcript || /^NO_SPEECH[.!\s]*$/i.test(transcript)) {
     throw new Error("VOICE_NO_SPEECH");
   }
   return transcript;
