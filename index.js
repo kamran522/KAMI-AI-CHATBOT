@@ -16,7 +16,7 @@ const pino = require("pino");
 const qrcode = require("qrcode-terminal");
 const {
   extractIncomingText, generateGeminiReply, splitReply, getSafeErrorReply,
-  describeGeminiError, transcribeVoiceNote, synthesizeVoiceReply, getSpeechText,
+  describeGeminiError, generateVoiceAnswer, synthesizeVoiceReply, getSpeechText,
 } = require("./kami");
 const { extractIncomingVoiceNote, validateVoiceNote, wavToWhatsAppVoiceNote } = require("./voice");
 
@@ -77,8 +77,8 @@ async function startKamiBot() {
               message, "buffer", {},
               { logger: pino({ level: "silent" }), reuploadRequest: client.updateMediaMessage }
             );
-            const transcript = await transcribeVoiceNote(audio, mimeType, { onRetry });
-            const answer = await generateGeminiReply(jid, transcript, { onRetry, voiceReply: true });
+            // Single multimodal request replaces separate transcription + reply calls.
+            const answer = await generateVoiceAnswer(jid, audio, mimeType, { onRetry });
 
             try {
               const wav = await synthesizeVoiceReply(answer, { onRetry });
