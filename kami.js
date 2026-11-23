@@ -7,7 +7,8 @@ const axios = require("axios");
 const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 const MAX_HISTORY_MESSAGES = 20;
 const DEFAULT_TTS_MODEL = "gemini-3.8-flash-lite-tts";
-const MAX_SPOKEN_CHARS = 1100;
+// Keep spoken WhatsApp replies short so TTS and file transfer complete sooner.
+const MAX_SPOKEN_CHARS = 450;
 const HISTORY_FILE = path.join(__dirname, "chat_history.json");
 const PROMPT_FILE = path.join(__dirname, "custom_prompt.txt");
 const KEY_FILE = path.join(__dirname, "key.json");
@@ -135,6 +136,87 @@ function getSpeechText(answer) {
     : trimmed.slice(0, MAX_SPOKEN_CHARS).trimEnd() + "...";
 }
 
+/**
+ * Low-latency voice mode: one multimodal Gemini request produces both the
+ * transcript and its conversational answer. Previously this took two requests.
+ * Synthesis remains separate because its output is audio.
+ */
+async function generateVoiceAnswer(chatId, audioBuffer, mimeType, { onRetry } = {}) {
+  if (!Buffer.isBuffer(audioBuffer) || !audioBuffer.length) throw new Error("VOICE_EMPTY_AUDIO");
+  if (audioBuffer.length > 8 * 1024 * 1024) throw new Error("VOICE_TOO_LARGE");
+  const apiKey = loadApiKey();
+  if (!apiKey) throw new Error("GEMINI_API_KEY_MISSING");
+
+  const model = process.env.GEMINI_AUDIO_MODEL?.trim() || process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL;
+  const past = Array.isArray(chatHistory[chatId]) ? chatHistory[chatId] : [];
+  const contents = past
+    .filter((item) => typeof item.content === "string" && ["user", "assistant"].includes(item.role))
+    .map((item) => ({
+      role: item.role === "assistant" ? "model" : "user",
+      parts: [{ text: item.content }],
+    }));
+  contents.push({
+    role: "user",
+    parts: [
+      {
+        text: "Listen to this WhatsApp voice note and respond to the speaker in their original language. "
+          + "Return a JSON object with exactly two string fields: transcript (the user's words) "
+          + "and answer (your helpful answer, ideally 1-2 short spoken sentences, at most 350 characters). "
+          + "Return transcript as NO_SPEECH if the audio is not understandable. Do not translate the transcript.",
+      },
+      { inlineData: { mimeType, data: audioBuffer.toString("base64") } },
+    ],
+  });
+
+  const response = await postGeminiWithRetry(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+    {
+      systemInstruction: {
+        parts: [{ text: loadPrompt() + "\nFor a voice reply, be concise and use natural speech." }],
+      },
+      contents,
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "OBJECT",
+          properties: {
+            transcript: { type: "STRING" },
+            answer: { type: "STRING" },
+          },
+          required: ["transcript", "answer"],
+        },
+        maxOutputTokens: 550,
+      },
+    },
+    {
+      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+      timeout: 45000,
+    },
+    onRetry
+  );
+  const raw = (response.data?.candidates?.[0]?.content?.parts || [])
+    .filter((p) => typeof p.text === "string" && !p.thought)
+    .map((p) => p.text).join("").trim();
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("VOICE_INVALID_RESPONSE");
+  }
+  const transcript = typeof parsed?.transcript === "string" ? parsed.transcript.trim() : "";
+  const answer = typeof parsed?.answer === "string" ? parsed.answer.trim() : "";
+  if (!transcript || /^NO_SPEECH[.!\\s]*$/i.test(transcript)) throw new Error("VOICE_NO_SPEECH");
+  if (!answer) throw new Error("VOICE_INVALID_RESPONSE");
+
+  chatHistory[chatId] = [
+    ...past,
+    { role: "user", content: transcript },
+    { role: "assistant", content: answer },
+  ].slice(-MAX_HISTORY_MESSAGES);
+  saveChatHistory();
+  return answer;
+}
+
 // Transcribe without changing chat history; the recognized words are later passed
 // through the normal Gemini chat flow and stored like any other user message.
 async function transcribeVoiceNote(audioBuffer, mimeType, { onRetry } = {}) {
@@ -198,10 +280,12 @@ async function synthesizeVoiceReply(answer, { onRetry } = {}) {
     },
     {
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      timeout: 120000,
+      // Do not allow two more long retries on speech synthesis: prefer a fast text fallback.
+      timeout: Math.min(60000, Math.max(3000, Number(process.env.VOICE_TTS_TIMEOUT_MS) || 14000)),
       maxContentLength: 12 * 1024 * 1024,
     },
-    onRetry
+    onRetry,
+    0
   );
   const audioBlock = (response.data?.steps || [])
     .filter((step) => step.type === "model_output")
@@ -224,7 +308,7 @@ function splitReply(answer, limit = 3500) {
 
 // Retry only temporary Gemini failures, never configuration or authorization errors.
 // Notify WhatsApp on the first transient failure, then retry with bounded backoff.
-async function postGeminiWithRetry(url, body, options, onRetry) {
+async function postGeminiWithRetry(url, body, options, onRetry, maxRetries = 2) {
   for (let attempt = 0; ; attempt++) {
     try {
       return await axios.post(url, body, options);
@@ -232,7 +316,7 @@ async function postGeminiWithRetry(url, body, options, onRetry) {
       const status = error.response?.status;
       const transient = status === 408 || status === 429 || (status >= 500 && status <= 599) ||
         ["ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "ECONNABORTED", "EAI_AGAIN", "ENETUNREACH"].includes(error.code);
-      if (!transient || attempt >= 2) throw error;
+      if (!transient || attempt >= maxRetries) throw error;
 
       if (attempt === 0 && typeof onRetry === "function") {
         try {
@@ -271,7 +355,7 @@ function getSafeErrorReply(error) {
   // Every failure gets a useful status; only temporary errors are retried.
   const prefix = "🔄 Updating, please wait...\n";
   if (error.message === "VOICE_TOO_LARGE") return "Voice note is too long or too large. Please send a voice note shorter than 3 minutes and 8 MB.";
-  if (error.message === "VOICE_NO_SPEECH" || error.message === "VOICE_EMPTY_AUDIO")
+  if (error.message === "VOICE_INVALID_RESPONSE") return "I could not process that voice note. Please try again.";\n  if (error.message === "VOICE_NO_SPEECH" || error.message === "VOICE_EMPTY_AUDIO")
     return "I couldn't understand the voice note. Please record it again.";
   if (error.message === "VOICE_UNSUPPORTED_FORMAT")
     return "This voice-note format is not supported. Please send a normal WhatsApp voice note.";
@@ -292,5 +376,5 @@ function getSafeErrorReply(error) {
 module.exports = {
   extractIncomingText, generateGeminiReply, splitReply, getSafeErrorReply,
   describeGeminiError, loadApiKey, readChatHistory, transcribeVoiceNote,
-  synthesizeVoiceReply, getSpeechText,
+  synthesizeVoiceReply, getSpeechText, generateVoiceAnswer,
 };
