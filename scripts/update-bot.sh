@@ -44,7 +44,13 @@ restore_prompt
 trap - EXIT
 
 # Run live diagnostics before restarting. Credentials remain on this server.
-npm run check:gemini
+# API Route is optional and takes priority for text when a key is configured.
+# Voice notes still use the separate Gemini credentials.
+if node -e 'process.exit(require("./api-route").getApiRouteKey() ? 0 : 1)'; then
+  npm run check:api-route
+else
+  npm run check:gemini
+fi
 
 # The optional live-call feature has been retired. Stop its old PM2 service
 # if it was previously started, so a deleted script is not kept running.
