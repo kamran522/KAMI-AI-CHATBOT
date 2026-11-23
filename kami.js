@@ -6,6 +6,8 @@ const axios = require("axios");
 
 const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 const MAX_HISTORY_MESSAGES = 20;
+const DEFAULT_TTS_MODEL = "gemini-3.8-flash-lite-tts";
+const MAX_SPOKEN_CHARS = 1100;
 const HISTORY_FILE = path.join(__dirname, "chat_history.json");
 const PROMPT_FILE = path.join(__dirname, "custom_prompt.txt");
 const KEY_FILE = path.join(__dirname, "key.json");
@@ -74,7 +76,7 @@ function extractIncomingText(message) {
   return options.find((value) => typeof value === "string" && value.trim())?.trim() || "";
 }
 
-async function generateGeminiReply(chatId, userText, { onRetry } = {}) {
+async function generateGeminiReply(chatId, userText, { onRetry, voiceReply = false } = {}) {
   const apiKey = loadApiKey();
   if (!apiKey) throw new Error("GEMINI_API_KEY_MISSING");
 
@@ -90,7 +92,13 @@ async function generateGeminiReply(chatId, userText, { onRetry } = {}) {
   const response = await postGeminiWithRetry(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
     {
-      systemInstruction: { parts: [{ text: loadPrompt() }] },
+      systemInstruction: {
+        parts: [{
+          text: loadPrompt() + (voiceReply
+            ? "\nFor this WhatsApp voice-note reply, answer in the same language as the user. Keep the answer natural, concise and suitable for speaking aloud."
+            : ""),
+        }],
+      },
       contents,
     },
     {
@@ -117,6 +125,95 @@ async function generateGeminiReply(chatId, userText, { onRetry } = {}) {
   ].slice(-MAX_HISTORY_MESSAGES);
   saveChatHistory();
   return answer;
+}
+
+function getSpeechText(answer) {
+  const trimmed = String(answer || "").trim();
+  if (!trimmed) throw new Error("VOICE_EMPTY_REPLY");
+  return trimmed.length <= MAX_SPOKEN_CHARS
+    ? trimmed
+    : trimmed.slice(0, MAX_SPOKEN_CHARS).trimEnd() + "...";
+}
+
+// Transcribe without changing chat history; the recognized words are later passed
+// through the normal Gemini chat flow and stored like any other user message.
+async function transcribeVoiceNote(audioBuffer, mimeType, { onRetry } = {}) {
+  if (!Buffer.isBuffer(audioBuffer) || audioBuffer.length === 0) {
+    throw new Error("VOICE_EMPTY_AUDIO");
+  }
+  if (audioBuffer.length > 8 * 1024 * 1024) {
+    throw new Error("VOICE_TOO_LARGE");
+  }
+  const apiKey = loadApiKey();
+  if (!apiKey) throw new Error("GEMINI_API_KEY_MISSING");
+  const model = process.env.GEMINI_AUDIO_MODEL?.trim() || process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL;
+  const response = await postGeminiWithRetry(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+    {
+      contents: [{
+        role: "user",
+        parts: [
+          { text: "Transcribe the speech in this voice note exactly in its original language. Return only the spoken words, without timestamps, commentary or translation. If there is no intelligible speech, return NO_SPEECH." },
+          { inlineData: { mimeType, data: audioBuffer.toString("base64") } },
+        ],
+      }],
+    },
+    {
+      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+      timeout: 90000,
+    },
+    onRetry
+  );
+  const transcript = (response.data?.candidates?.[0]?.content?.parts || [])
+    .filter((part) => typeof part.text === "string" && !part.thought)
+    .map((part) => part.text)
+    .join(" ").trim();
+  if (!transcript || /^NO_SPEECH[.!\\s]*$/i.test(transcript)) {
+    throw new Error("VOICE_NO_SPEECH");
+  }
+  return transcript;
+}
+
+// Gemini 3.8 speech uses the Interactions API; its unary output is a complete
+// WAV file, which voice.js converts to the OGG/Opus format required by WhatsApp.
+async function synthesizeVoiceReply(answer, { onRetry } = {}) {
+  const apiKey = loadApiKey();
+  if (!apiKey) throw new Error("GEMINI_API_KEY_MISSING");
+  const response = await postGeminiWithRetry(
+    "https://generativelanguage.googleapis.com/v1beta/interactions",
+    {
+      model: process.env.GEMINI_TTS_MODEL?.trim() || DEFAULT_TTS_MODEL,
+      input: [{
+        type: "user_input",
+        content: [{
+          type: "text",
+          text: getSpeechText(answer),
+          annotations: [{ type: "speech_metadata", style: "Natural, clear, conversational" }],
+        }],
+      }],
+      response_format: { type: "audio" },
+      generation_config: {
+        speech_config: [{ voice: process.env.GEMINI_TTS_VOICE?.trim() || "Kore" }],
+      },
+    },
+    {
+      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+      timeout: 120000,
+      maxContentLength: 12 * 1024 * 1024,
+    },
+    onRetry
+  );
+  const audioBlock = (response.data?.steps || [])
+    .filter((step) => step.type === "model_output")
+    .flatMap((step) => step.content || [])
+    .filter((part) => part.type === "audio" && typeof part.data === "string")
+    .at(-1);
+  if (!audioBlock?.data) throw new Error("GEMINI_TTS_EMPTY_RESPONSE");
+  const audio = Buffer.from(audioBlock.data, "base64");
+  if (!audio.length || audio.length > 8 * 1024 * 1024) {
+    throw new Error("VOICE_OUTPUT_TOO_LARGE");
+  }
+  return audio;
 }
 
 function splitReply(answer, limit = 3500) {
@@ -173,6 +270,11 @@ function describeGeminiError(error) {
 function getSafeErrorReply(error) {
   // Every failure gets a useful status; only temporary errors are retried.
   const prefix = "🔄 Updating, please wait...\n";
+  if (error.message === "VOICE_TOO_LARGE") return "Voice note is too long or too large. Please send a voice note shorter than 3 minutes and 8 MB.";
+  if (error.message === "VOICE_NO_SPEECH" || error.message === "VOICE_EMPTY_AUDIO")
+    return "I couldn't understand the voice note. Please record it again.";
+  if (error.message === "VOICE_UNSUPPORTED_FORMAT")
+    return "This voice-note format is not supported. Please send a normal WhatsApp voice note.";
   if (error.message === "GEMINI_API_KEY_MISSING") {
     return prefix + "Gemini API key is not configured. The bot owner must set GEMINI_API_KEY or key.json.";
   }
@@ -187,4 +289,8 @@ function getSafeErrorReply(error) {
   return prefix + "Unable to get a Gemini reply right now. Please try again later.";
 }
 
-module.exports = { extractIncomingText, generateGeminiReply, splitReply, getSafeErrorReply, describeGeminiError, loadApiKey, readChatHistory };
+module.exports = {
+  extractIncomingText, generateGeminiReply, splitReply, getSafeErrorReply,
+  describeGeminiError, loadApiKey, readChatHistory, transcribeVoiceNote,
+  synthesizeVoiceReply, getSpeechText,
+};
