@@ -8,7 +8,7 @@ const Module = require("node:module");
 
 function createTestBot() {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "kami-bot-test-"));
-  for (const filename of ["kami.js", "custom_prompt.txt"]) {
+  for (const filename of ["kami.js", "custom_prompt.txt", "api-route.js"]) {
     fs.copyFileSync(path.join(__dirname, "..", filename), path.join(tempDir, filename));
   }
   fs.writeFileSync(path.join(tempDir, "key.json"), '{"geminiApiKey":"YOUR_GEMINI_API_KEY_HERE"}');

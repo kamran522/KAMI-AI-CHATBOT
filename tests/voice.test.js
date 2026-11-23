@@ -30,7 +30,7 @@ function makeWav() {
 
 function makeGeminiFixture(post, initialHistory = {}) {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), "kami-voice-test-"));
-  for (const file of ["kami.js", "custom_prompt.txt"]) {
+  for (const file of ["kami.js", "custom_prompt.txt", "api-route.js"]) {
     fs.copyFileSync(path.join(__dirname, "..", file), path.join(folder, file));
   }
   fs.writeFileSync(path.join(folder, "chat_history.json"), JSON.stringify(initialHistory));
