@@ -4,7 +4,6 @@ const fs = require("node:fs");
 const path = require("node:path");
 const axios = require("axios");
 const https = require("node:https");
-const { BASE_URL: API_ROUTE_URL, getApiRouteKey, resolveChatModel, safeApiRouteError } = require("./api-route");
 
 const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 const MAX_HISTORY_MESSAGES = 20;
@@ -84,42 +83,6 @@ function extractIncomingText(message) {
 
 async function generateGeminiReply(chatId, userText, { onRetry, voiceReply = false } = {}) {
   const past = Array.isArray(chatHistory[chatId]) ? chatHistory[chatId] : [];
-  let answer;
-  if (getApiRouteKey()) {
-    // API Route uses Chat Completions with model IDs validated against /v1/models.
-    // Model selections are per WhatsApp chat; the custom prompt is unchanged.
-    const model = await resolveChatModel(chatId);
-    const messages = [
-      { role: "system", content: loadPrompt() },
-      ...[...past, { role: "user", content: userText }]
-        .filter((item) => typeof item.content === "string" &&
-          ["user", "assistant"].includes(item.role))
-        .map(({ role, content }) => ({ role, content })),
-    ];
-    try {
-      const response = await postGeminiWithRetry(
-        API_ROUTE_URL + "/chat/completions",
-        { model, messages, max_tokens: 700 },
-        {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: "Bearer " + getApiRouteKey(),
-          },
-          timeout: 60000,
-          httpsAgent: voiceHttpsAgent,
-        },
-        onRetry
-      );
-      const content = response.data?.choices?.[0]?.message?.content;
-      answer = typeof content === "string" ? content.trim() :
-        Array.isArray(content) ? content.filter((part) => typeof part.text === "string")
-          .map((part) => part.text).join("\n").trim() : "";
-      if (!answer) throw new Error("API_ROUTE_EMPTY_RESPONSE");
-    } catch (error) {
-      error.apiRoute = true;
-      throw error;
-    }
-  } else {
   const apiKey = loadApiKey();
   if (!apiKey) throw new Error("GEMINI_API_KEY_MISSING");
 
@@ -150,7 +113,7 @@ async function generateGeminiReply(chatId, userText, { onRetry, voiceReply = fal
     onRetry
   );
 
-  answer = (response.data?.candidates?.[0]?.content?.parts || [])
+  const answer = (response.data?.candidates?.[0]?.content?.parts || [])
     .filter((part) => typeof part.text === "string" && !part.thought)
     .map((part) => part.text)
     .join("\n")
@@ -158,8 +121,6 @@ async function generateGeminiReply(chatId, userText, { onRetry, voiceReply = fal
   if (!answer) {
     const cause = response.data?.candidates?.[0]?.finishReason || response.data?.promptFeedback?.blockReason || "No text in candidate";
     throw new Error(`GEMINI_EMPTY_RESPONSE: ${cause}`);
-  }
-
   }
 
   chatHistory[chatId] = [
@@ -400,8 +361,6 @@ function describeGeminiError(error) {
   const key = loadApiKey();
   let safe = String(description);
   if (key) safe = safe.split(key).join("[REDACTED]");
-  const routeKey = getApiRouteKey();
-  if (routeKey) safe = safe.split(routeKey).join("[REDACTED]");
   safe = safe.replace(/AIza[0-9A-Za-z_-]{20,}/g, "[REDACTED]");
   return `${status ? `HTTP ${status}` : "No HTTP response"}${code}: ${safe.slice(0, 500)}`;
 }
@@ -409,7 +368,6 @@ function describeGeminiError(error) {
 function getSafeErrorReply(error) {
   // Every failure gets a useful status; only temporary errors are retried.
   const prefix = "🔄 Updating, please wait...\n";
-  if (error.apiRoute || error.message?.startsWith("API_ROUTE")) return prefix + safeApiRouteError(error);
   if (error.message === "VOICE_TOO_LARGE") return "Voice note is too long or too large. Please send a voice note shorter than 3 minutes and 8 MB.";
   if (error.message === "VOICE_INVALID_RESPONSE") return "I could not process that voice note. Please try again.";
   if (error.message === "VOICE_NO_SPEECH" || error.message === "VOICE_EMPTY_AUDIO")
@@ -417,8 +375,7 @@ function getSafeErrorReply(error) {
   if (error.message === "VOICE_UNSUPPORTED_FORMAT")
     return "This voice-note format is not supported. Please send a normal WhatsApp voice note.";
   if (error.message === "GEMINI_API_KEY_MISSING") {
-    return prefix + "An AI API key is not configured for this request. For text replies, configure API_ROUTE_KEY " +
-      "(or apiRouteApiKey in key.json), or configure GEMINI_API_KEY. WhatsApp voice notes still require a Gemini API key.";
+    return prefix + "Gemini API key is not configured. Set GEMINI_API_KEY or geminiApiKey in key.json.";
   }
   const status = error.response?.status;
   if (status === 400) return prefix + "Gemini rejected the request (HTTP 400). The bot owner should check the server logs.";

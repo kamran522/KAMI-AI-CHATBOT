@@ -8,7 +8,7 @@ const Module = require("node:module");
 
 function createTestBot() {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "kami-bot-test-"));
-  for (const filename of ["kami.js", "custom_prompt.txt", "api-route.js"]) {
+  for (const filename of ["kami.js", "custom_prompt.txt"]) {
     fs.copyFileSync(path.join(__dirname, "..", filename), path.join(tempDir, filename));
   }
   fs.writeFileSync(path.join(tempDir, "key.json"), '{"geminiApiKey":"YOUR_GEMINI_API_KEY_HERE"}');
@@ -80,18 +80,6 @@ test("any message text including command-like text is sent to Gemini and history
     else process.env.GEMINI_API_KEY = oldKey;
     if (oldModel === undefined) delete process.env.GEMINI_MODEL;
     else process.env.GEMINI_MODEL = oldModel;
-    setup.cleanup();
-  }
-});
-
-test("missing Gemini key error also tells users how to configure API Route for text", () => {
-  const setup = createTestBot();
-  try {
-    const reply = setup.bot.getSafeErrorReply(new Error("GEMINI_API_KEY_MISSING"));
-    assert.match(reply, /API_ROUTE_KEY/);
-    assert.match(reply, /apiRouteApiKey/);
-    assert.match(reply, /voice notes still require a Gemini API key/i);
-  } finally {
     setup.cleanup();
   }
 });
