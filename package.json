@@ -8,9 +8,7 @@
     "start": "node index.js",
     "test": "node --test tests/*.test.js",
     "check:gemini": "node scripts/check-gemini.js",
-    "check:voice": "node scripts/check-voice.js",
-    "check:api-route": "node scripts/check-api-route.js",
-    "check:providers": "node scripts/check-providers.js"
+    "check:voice": "node scripts/check-voice.js"
   },
   "author": "Kamran Hasil (+923111008401)",
   "license": "MIT",
