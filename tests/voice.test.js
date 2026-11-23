@@ -77,14 +77,13 @@ test("transcription sends OGG as Gemini inline audio, without adding it to histo
       return { data: { candidates: [{ content: { parts: [{ text: "سلام" }] } }] } };
     });
     try {
-      const result = await fixture.api.transcribeVoiceNote("sound".length && Buffer.from("sound"), "audio/ogg");
+      const result = await fixture.api.transcribeVoiceNote(Buffer.from("sound"), "audio/ogg");
       assert.equal(result, "سلام");
       assert.equal(calls.length, 1);
       assert.match(calls[0][0], /models\\/gemini-/);
       assert.equal(calls[0][1].contents[0].parts[1].inlineData.mimeType, "audio/ogg");
       assert.equal(calls[0][1].contents[0].parts[1].inlineData.data, Buffer.from("sound").toString("base64"));
       assert.equal(calls[0][2].headers["x-goog-api-key"], "unit-test-key");
-      assert.equal(fs.existsSync(path.join(path.dirname(require.resolve(path.join(__dirname, "..", "kami.js"))), "not-a-file")), false);
       assert.deepEqual(fixture.api.readChatHistory(), {});
       await assert.rejects(fixture.api.transcribeVoiceNote(Buffer.alloc(0), "audio/ogg"), /VOICE_EMPTY_AUDIO/);
     } finally { fixture.cleanup(); }
