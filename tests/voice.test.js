@@ -80,7 +80,7 @@ test("transcription sends OGG as Gemini inline audio, without adding it to histo
       const result = await fixture.api.transcribeVoiceNote(Buffer.from("sound"), "audio/ogg");
       assert.equal(result, "سلام");
       assert.equal(calls.length, 1);
-      assert.match(calls[0][0], /models\\/gemini-/);
+      assert.ok(calls[0][0].includes("/models/gemini-"));
       assert.equal(calls[0][1].contents[0].parts[1].inlineData.mimeType, "audio/ogg");
       assert.equal(calls[0][1].contents[0].parts[1].inlineData.data, Buffer.from("sound").toString("base64"));
       assert.equal(calls[0][2].headers["x-goog-api-key"], "unit-test-key");
@@ -102,12 +102,12 @@ test("TTS requests speech through Interactions API and extracts WAV output", asy
       const result = await fixture.api.synthesizeVoiceReply("Hello");
       assert.deepEqual(result, wav);
       assert.equal(calls.length, 1);
-      assert.match(calls[0][0], /v1beta\\/interactions$/);
+      assert.ok(calls[0][0].endsWith("/v1beta/interactions"));
       assert.equal(calls[0][1].model, "gemini-3.8-flash-lite-tts");
       assert.equal(calls[0][1].input[0].content[0].text, "Hello");
       assert.equal(calls[0][1].generation_config.speech_config[0].voice, "Kore");
       assert.equal(calls[0][1].response_format.type, "audio");
-      assert.match(fixture.api.getSpeechText("a".repeat(1200)), /\\.\\.\\.$/);
+      assert.ok(fixture.api.getSpeechText("a".repeat(1200)).endsWith("..."));
     } finally { fixture.cleanup(); }
   });
 });
