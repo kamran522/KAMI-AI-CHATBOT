@@ -84,14 +84,20 @@ async function startKamiBot() {
             const answer = await generateVoiceAnswer(jid, audio, mimeType, { onRetry });
             const aiMs = Date.now() - startedGemini;
 
+            let stage = "Gemini TTS";
+            let stageStarted = Date.now();
             try {
-              const startedSpeech = Date.now();
+              const startedSpeech = stageStarted;
               const wav = await synthesizeVoiceReply(answer, { onRetry });
               const ttsMs = Date.now() - startedSpeech;
-              const startedEncoding = Date.now();
+              stage = "FFmpeg OGG/Opus encoding";
+              stageStarted = Date.now();
+              const startedEncoding = stageStarted;
               const ogg = await wavToWhatsAppVoiceNote(wav);
               const encodeMs = Date.now() - startedEncoding;
-              const startedSending = Date.now();
+              stage = "WhatsApp audio delivery";
+              stageStarted = Date.now();
+              const startedSending = stageStarted;
               await client.sendMessage(
                 jid,
                 { audio: ogg, ptt: true, mimetype: "audio/ogg; codecs=opus" },
@@ -108,7 +114,10 @@ async function startKamiBot() {
                 }
               }
             } catch (voiceError) {
-              console.error("Voice reply failed; falling back to text:", describeGeminiError(voiceError));
+              console.error(
+                `Voice reply failed at ${stage} (download=${downloadedMs}ms, ai=${aiMs}ms, stage=${Date.now() - stageStarted}ms):`,
+                describeGeminiError(voiceError)
+              );
               for (const chunk of splitReply("🔊 Voice reply is unavailable right now. Here's the text answer:\n" + answer)) {
                 await client.sendMessage(jid, { text: chunk }, { quoted: message });
               }
