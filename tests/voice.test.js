@@ -152,7 +152,10 @@ function makeSocketFixture({ ttsFails = false, tooLarge = false } = {}) {
     };
     if (name === "./kami") return {
       extractIncomingText: (msg) => msg.conversation || "",
-      transcribeVoiceNote: async () => "spoken question",
+      generateVoiceAnswer: async (jid, audio, mimeType, options) => {
+        requests.push({ jid, text: "spoken question", audio, mimeType, options });
+        return "The spoken answer";
+      },
       generateGeminiReply: async (jid, text, options) => {
         requests.push({ jid, text, options });
         return "The spoken answer";
@@ -200,7 +203,7 @@ test("voice note gets a ptt=true audio response, and text messages still receive
   assert.equal(outgoingVoice.opts.quoted, voice);
   assert.equal(fixture.sent.find((m) => m.jid === "2@s.whatsapp.net").payload.text, "The spoken answer");
   assert.deepEqual(fixture.requests.map((r) => r.text).sort(), ["hello", "spoken question"]);
-  assert.equal(fixture.requests.find((r) => r.text === "spoken question").options.voiceReply, true);
+  assert.equal(fixture.requests.find((r) => r.text === "spoken question").mimeType, "audio/ogg");
 });
 
 test("TTS failures deliver the generated answer as text; oversized voice is never downloaded", async () => {
@@ -223,4 +226,40 @@ test("TTS failures deliver the generated answer as text; oversized voice is neve
   assert.equal(b.getDownloads(), 0);
   assert.equal(b.sent.length, 1);
   assert.match(b.sent[0].payload.text, /VOICE_TOO_LARGE/);
+});
+
+test("fast voice uses one Gemini multimodal request and stores transcript in chat context", async () => {
+  await withTestKey(async () => {
+    const calls = [];
+    const fixture = makeGeminiFixture(async (...args) => {
+      calls.push(args);
+      return { data: { candidates: [{ content: { parts: [{ text: JSON.stringify({
+        transcript: "How are you?", answer: "I'm well, thanks.",
+      }) }] } }] } };
+    });
+    try {
+      const result = await fixture.api.generateVoiceAnswer("voice-chat", Buffer.from("ogg bytes"), "audio/ogg");
+      assert.equal(result, "I'm well, thanks.");
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0][1].contents.at(-1).parts[1].inlineData.mimeType, "audio/ogg");
+      assert.equal(calls[0][1].generationConfig.responseMimeType, "application/json");
+      const history = fixture.api.readChatHistory();
+      assert.deepEqual(history["voice-chat"].map((item) => item.content), ["How are you?", "I'm well, thanks."]);
+    } finally { fixture.cleanup(); }
+  });
+});
+
+test("fast voice rejects unintelligible speech and empty model answers", async () => {
+  await withTestKey(async () => {
+    let response = { transcript: "NO_SPEECH", answer: "Nothing heard" };
+    const fixture = makeGeminiFixture(async () => ({
+      data: { candidates: [{ content: { parts: [{ text: JSON.stringify(response) }] } }] },
+    }));
+    try {
+      await assert.rejects(fixture.api.generateVoiceAnswer("c", Buffer.from("a"), "audio/ogg"), /VOICE_NO_SPEECH/);
+      response = { transcript: "hello", answer: "" };
+      await assert.rejects(fixture.api.generateVoiceAnswer("c", Buffer.from("a"), "audio/ogg"), /VOICE_INVALID_RESPONSE/);
+      assert.deepEqual(fixture.api.readChatHistory(), {});
+    } finally { fixture.cleanup(); }
+  });
 });
