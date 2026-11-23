@@ -10,10 +10,15 @@ const {
   useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
+  downloadMediaMessage,
 } = require("@adiwajshing/baileys");
 const pino = require("pino");
 const qrcode = require("qrcode-terminal");
-const { extractIncomingText, generateGeminiReply, splitReply, getSafeErrorReply, describeGeminiError } = require("./kami");
+const {
+  extractIncomingText, generateGeminiReply, splitReply, getSafeErrorReply,
+  describeGeminiError, transcribeVoiceNote, synthesizeVoiceReply, getSpeechText,
+} = require("./kami");
+const { extractIncomingVoiceNote, validateVoiceNote, wavToWhatsAppVoiceNote } = require("./voice");
 
 async function startKamiBot() {
   const { state, saveCreds } = await useMultiFileAuthState(`./${SESSION_NAME}`);
@@ -39,7 +44,8 @@ async function startKamiBot() {
       if (jid === "status@broadcast" || jid.endsWith("@broadcast") || jid.endsWith("@newsletter")) continue;
 
       const text = extractIncomingText(message.message);
-      if (!text) continue;
+      const voiceNote = extractIncomingVoiceNote(message.message);
+      if (!text && !voiceNote) continue;
 
       const messageId = message.key?.id;
       if (messageId) {
@@ -52,20 +58,54 @@ async function startKamiBot() {
       const previous = pendingChats.get(jid) || Promise.resolve();
       const task = previous.catch(() => {}).then(async () => {
         try {
-          // No prefix, mention, command, or owner check: ALL new incoming text is sent to Gemini.
-          const answer = await generateGeminiReply(jid, text, {
-            // Sent only on the first temporary failure; retrying happens in kami.js.
-            onRetry: async (retryError) => {
-              console.warn("Gemini request failed temporarily; retrying:", describeGeminiError(retryError));
+          let hasNotifiedRetry = false;
+          const onRetry = async (retryError) => {
+            console.warn("Gemini request failed temporarily; retrying:", describeGeminiError(retryError));
+            if (hasNotifiedRetry) return;
+            hasNotifiedRetry = true;
+            await client.sendMessage(
+              jid,
+              { text: "🔄 Updating, please wait... I'm retrying your message." },
+              { quoted: message }
+            );
+          };
+
+          if (voiceNote) {
+            const mimeType = validateVoiceNote(voiceNote);
+            // Keep media in memory, with Baileys handling expired media re-uploads.
+            const audio = await downloadMediaMessage(
+              message, "buffer", {},
+              { logger: pino({ level: "silent" }), reuploadRequest: client.updateMediaMessage }
+            );
+            const transcript = await transcribeVoiceNote(audio, mimeType, { onRetry });
+            const answer = await generateGeminiReply(jid, transcript, { onRetry, voiceReply: true });
+
+            try {
+              const wav = await synthesizeVoiceReply(answer, { onRetry });
+              const ogg = await wavToWhatsAppVoiceNote(wav);
               await client.sendMessage(
                 jid,
-                { text: "🔄 Updating, please wait... I'm retrying your message." },
+                { audio: ogg, ptt: true, mimetype: "audio/ogg; codecs=opus" },
                 { quoted: message }
               );
-            },
-          });
-          for (const chunk of splitReply(answer)) {
-            await client.sendMessage(jid, { text: chunk }, { quoted: message });
+              // A long answer is spoken in shortened form; send full details as text.
+              if (getSpeechText(answer) !== answer.trim()) {
+                for (const chunk of splitReply(answer)) {
+                  await client.sendMessage(jid, { text: chunk }, { quoted: message });
+                }
+              }
+            } catch (voiceError) {
+              console.error("Voice reply failed; falling back to text:", describeGeminiError(voiceError));
+              for (const chunk of splitReply("🔊 Voice reply is unavailable right now. Here's the text answer:\n" + answer)) {
+                await client.sendMessage(jid, { text: chunk }, { quoted: message });
+              }
+            }
+          } else {
+            // Keep automatic text replies unchanged.
+            const answer = await generateGeminiReply(jid, text, { onRetry });
+            for (const chunk of splitReply(answer)) {
+              await client.sendMessage(jid, { text: chunk }, { quoted: message });
+            }
           }
         } catch (error) {
           console.error("Gemini auto-reply failed:", describeGeminiError(error));

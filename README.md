@@ -1,6 +1,6 @@
 # KAMI AI CHAT BOT
 
-A WhatsApp auto-reply bot powered by Google Gemini and Baileys. Incoming text messages are sent to Gemini automatically—no `!ai`, `/ai`, or other command is required.
+A WhatsApp auto-reply bot powered by Google Gemini and Baileys. Incoming text messages receive text answers and incoming WhatsApp voice notes receive spoken answers automatically—no `!ai`, `/ai`, or other command is required.
 
 **Creator:** Kamran Hasil  
 **WhatsApp:** +92 339 5267262  
@@ -9,6 +9,8 @@ A WhatsApp auto-reply bot powered by Google Gemini and Baileys. Incoming text me
 ## Features
 
 - Automatic replies to incoming WhatsApp text in private chats and groups
+- WhatsApp voice-note replies: Gemini transcribes voice messages and responds with a WhatsApp voice note (OGG/Opus)
+- Keeps conversation context between voice notes and text; text answers are used as a fallback if speech synthesis fails
 - Google Gemini integration and a custom bot personality/prompt
 - Recent conversation context per chat
 - WhatsApp QR-code pairing
@@ -25,6 +27,7 @@ A WhatsApp auto-reply bot powered by Google Gemini and Baileys. Incoming text me
 - Git
 - Google Gemini API key
 - A WhatsApp account to link as a device
+- **FFmpeg with libopus support** for outgoing WhatsApp voice-note encoding (`sudo apt-get install -y ffmpeg`)
 
 ## Installation
 
@@ -71,6 +74,37 @@ When Gemini returns a temporary HTTP 429, HTTP 5xx, timeout, or certain network 
 If the retries fail, or the error is permanent (invalid key, unavailable model, billing issue), the bot sends an error message starting with **“🔄 Updating, please wait...”** and including a short explanation. Permanent errors **are not fixed automatically**. Check the server logs and correct the cause before expecting normal responses. The bot does not endlessly retry and does not automatically resend a failed question after its retries are exhausted.
 
 Run `npm test` to check the bot’s message handling and retry behavior without a live Gemini API key. Run `npm run check:gemini` on the server with a real key to determine whether Gemini access works.
+
+## Voice-note replies
+
+Voice notes sent to the bot (WhatsApp push-to-talk audio, including disappearing voice notes) are processed automatically in private chats and groups. Audio files sent as attachments are not processed as voice notes.
+
+1. The bot downloads an incoming voice note in memory and asks Gemini to transcribe it in the original language.
+2. The transcript enters the existing chat context, and Gemini writes a concise response in the user's language.
+3. Gemini Text-to-Speech speaks the response. FFmpeg converts its WAV output to OGG/Opus, and Baileys sends it with `ptt: true` so WhatsApp displays a voice message.
+4. If speech synthesis or FFmpeg fails, the bot sends the **text answer** instead. If transcription fails, it sends a short error message. Large notes (over **8 MB** or **3 minutes**) are rejected.
+
+Install FFmpeg on the Linux server before starting the bot:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y ffmpeg
+ffmpeg -encoders | grep libopus
+```
+
+The existing `GEMINI_API_KEY` or `key.json` is reused. Optional environment variables:
+
+| Variable | Default | Use |
+| --- | --- | --- |
+| `GEMINI_AUDIO_MODEL` | `GEMINI_MODEL` / `gemini-3.5-flash-lite` | Audio transcription |
+| `GEMINI_TTS_MODEL` | `gemini-3.8-flash-lite-tts` | Speech synthesis via Gemini Interactions API |
+| `GEMINI_TTS_VOICE` | `Kore` | Synthetic voice |
+
+The selected models must be available to your Gemini API key. Voice recognition and TTS each make an additional Gemini API request and can use quota or paid credits. The existing `npm run check:gemini` command tests text generation only; it does not verify TTS model access.
+
+**Privacy:** Incoming voice-note bytes are sent to Google's Gemini API for transcription and processed in memory rather than stored locally. The resulting transcript is saved in the same `chat_history.json` file used for text conversations. Use this bot only where participants understand voice notes will be processed by Gemini.
+
+**Limitations:** Voice notes are limited to 8 MB and 3 minutes. Long answers are spoken in shortened form and followed by the full text. Actual voice synthesis depends on the external Gemini TTS model; it cannot be guaranteed offline.
 
 ## Start the bot manually
 
