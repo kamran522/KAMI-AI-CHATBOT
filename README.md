@@ -1,6 +1,6 @@
 # KAMI AI CHAT BOT
 
-A WhatsApp auto-reply bot powered by Google Gemini and optional API Route multi-model text chat, using Baileys. Incoming text messages receive text answers and incoming WhatsApp voice notes receive spoken answers automatically—no `!ai`, `/ai`, or other command is required.
+A WhatsApp auto-reply bot powered by Google Gemini and Baileys. Incoming text messages receive text answers and incoming WhatsApp voice notes receive spoken answers automatically—no `!ai`, `/ai`, or other command is required.
 
 **Creator:** Kamran Hasil  
 **WhatsApp:** +92 339 5267262  
@@ -9,7 +9,6 @@ A WhatsApp auto-reply bot powered by Google Gemini and optional API Route multi-
 ## Features
 
 - Automatic replies to incoming WhatsApp text in private chats and groups
-- Optional API Route provider with one private key, `/models` discovery, and `/model` switching per chat
 - Faster WhatsApp voice-note replies: one Gemini audio request understands the note and drafts its response; a second request generates the voice (OGG/Opus)
 - Keeps conversation context between voice notes and text; text answers are used as a fallback if speech synthesis fails
 - Google Gemini integration and a custom bot personality/prompt
@@ -55,67 +54,6 @@ Protect the key file:
 ```bash
 chmod 600 key.json
 ```
-
-## API Route: use models available to your key
-
-API Route has an OpenAI-compatible `https://global.api-route.com/v1` endpoint. This bot uses `GET /v1/models` to list the models visible to **your key** and `POST /v1/chat/completions` to generate normal text replies. It accepts exact model IDs from the returned list; model IDs are not hard-coded.
-
-**Your API key's allowed groups determine which models you can use.** A key restricted to `gemini` and `gemini-image` cannot access other restricted groups. Image, video, embedding and speech models may appear in the model list, but these are **not regular text-chat models** and cannot be used through the bot's chat-completions command. This integration does not add image generation.
-
-### Configure the key privately
-
-Open `key.json` **on your server**, for example `nano ~/KAMI-AI-CHATBOT/key.json`, and add `apiRouteApiKey`. If you already use Gemini for voice notes, **keep** its existing key:
-
-```json
-{
-  "geminiApiKey": "YOUR_GEMINI_API_KEY",
-  "apiRouteApiKey": "YOUR_PRIVATE_API_ROUTE_KEY"
-}
-```
-
-This file is ignored by Git; protect it with `chmod 600 ~/KAMI-AI-CHATBOT/key.json`. Do not paste API keys into WhatsApp or GitHub. Alternatively use the server environment variable `API_ROUTE_KEY`. If both are present, the environment variable has priority. `API_ROUTE_MODEL` can set the initial text model to an exact available model ID.
-
-**When an API Route key is configured, normal text messages use API Route.** Without one, the bot continues to use Gemini. Voice-note recognition and speech synthesis **still use your direct Gemini API key**, since API Route's OpenAI-compatible chat endpoint does not guarantee native Gemini audio and TTS compatibility.
-
-### Check which API key the bot can see
-
-Run this **from your server** after adding your private key. It never prints a key value:
-
-```bash
-cd ~/KAMI-AI-CHATBOT
-npm run check:providers
-```
-
-`API Route: CONFIGURED` means the bot found your API Route key. `Gemini: MISSING` is acceptable for **text-only** replies, but voice notes still need a Gemini key. When both providers are missing, check that your key is in `~/KAMI-AI-CHATBOT/key.json` as `apiRouteApiKey`, or set `API_ROUTE_KEY` in the bot process's environment. If `key.json` was edited, confirm that its JSON syntax is valid.
-
-To confirm the actual running PM2 process uses this directory, run:
-
-```bash
-pm2 describe kami-ai-chat-bot
-```
-
-If it points to a different folder, update or reconfigure that process rather than assuming it uses `~/KAMI-AI-CHATBOT`.
-
-### Check the API key and change models
-
-```bash
-cd ~/KAMI-AI-CHATBOT
-npm run check:api-route
-```
-
-This checks your private key against `/v1/models` and prints the models visible to it. It does not print the key or request a paid chat answer.
-
-From WhatsApp, send:
-
-- `/models` — list the first 20 visible models, including non-chat models
-- `/models 2` — browse the next page
-- `/model` — show this chat's selected text model
-- `/model gemini-3.8-flash` — choose that model **only if the API lists it for your key**
-- `/model reset` — return to the server default
-
-Each chat's model selection is saved privately to `api_route_models.json`, which is ignored by Git. When no model is specified, the bot favors an available Gemini Flash model. All other messages remain normal automatic AI replies. **Any participant in a chat can choose its permitted chat model**, which can change API usage costs; only share the bot with trusted users or set a restricted/low-budget key.
-
-Model listing does not prove every model is available to each endpoint or that your balance covers a request. If the API rejects a model, check its group permissions and try another chat model. To restore Gemini-only text replies, remove the API Route key from `key.json` and the environment, then restart the bot.
 
 The default model is `gemini-3.5-flash-lite`. Test Gemini access before launching WhatsApp:
 
@@ -265,7 +203,7 @@ Press `Ctrl+C` to stop *viewing the logs*; the PM2-managed bot keeps running.
 bash ~/KAMI-AI-CHATBOT/scripts/update-bot.sh
 ```
 
-This backs up your local `custom_prompt.txt` under `~/.kami-ai-backups/`, temporarily restores its committed version for `git pull --ff-only`, then restores your own prompt. It runs tests and checks API Route when configured (otherwise Gemini), then restarts PM2. It will not overwrite other modified tracked files. The GitHub repository also merges the owner's own pull requests after CI tests pass; external contributors' PRs still require review.
+This backs up your local `custom_prompt.txt` under `~/.kami-ai-backups/`, temporarily restores its committed version for `git pull --ff-only`, then restores your own prompt. It runs tests and checks Gemini connectivity before restarting PM2. It will not overwrite other modified tracked files. The GitHub repository also merges the owner's own pull requests after CI tests pass; external contributors' PRs still require review.
 
 **One-time setup for existing installations with a blocked `git pull`:** First make the updater available while preserving your current prompt:
 
