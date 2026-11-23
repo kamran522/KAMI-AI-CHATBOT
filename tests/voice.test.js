@@ -28,11 +28,12 @@ function makeWav() {
   return wav;
 }
 
-function makeGeminiFixture(post) {
+function makeGeminiFixture(post, initialHistory = {}) {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), "kami-voice-test-"));
   for (const file of ["kami.js", "custom_prompt.txt"]) {
     fs.copyFileSync(path.join(__dirname, "..", file), path.join(folder, file));
   }
+  fs.writeFileSync(path.join(folder, "chat_history.json"), JSON.stringify(initialHistory));
   const originalLoad = Module._load;
   Module._load = function (name, ...args) {
     if (name === "axios") return { post };
@@ -107,6 +108,7 @@ test("TTS requests speech through Interactions API and extracts WAV output", asy
       assert.equal(calls[0][1].input[0].content[0].text, "Hello");
       assert.equal(calls[0][1].generation_config.speech_config[0].voice, "Kore");
       assert.equal(calls[0][1].response_format.type, "audio");
+      assert.equal(calls[0][2].httpsAgent.keepAlive, true);
       assert.ok(fixture.api.getSpeechText("a".repeat(1200)).endsWith("..."));
     } finally { fixture.cleanup(); }
   });
@@ -226,6 +228,35 @@ test("TTS failures deliver the generated answer as text; oversized voice is neve
   assert.equal(b.getDownloads(), 0);
   assert.equal(b.sent.length, 1);
   assert.match(b.sent[0].payload.text, /VOICE_TOO_LARGE/);
+});
+
+test("voice requests use a short context window and reuse the Gemini HTTPS connection", async () => {
+  await withTestKey(async () => {
+    const history = Array.from({ length: 20 }, (_, i) => ({
+      role: i % 2 ? "assistant" : "user",
+      content: "message-" + i,
+    }));
+    const calls = [];
+    const fixture = makeGeminiFixture(async (...args) => {
+      calls.push(args);
+      return { data: { candidates: [{ content: { parts: [{ text: JSON.stringify({
+        transcript: "hello", answer: "Hi there!",
+      }) }] } }] } };
+    }, { "voice-chat": history });
+
+    try {
+      const answer = await fixture.api.generateVoiceAnswer("voice-chat", Buffer.from("sound"), "audio/ogg");
+      assert.equal(answer, "Hi there!");
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0][1].contents.length, 9); // 8 earlier turns plus voice note
+      assert.equal(calls[0][1].contents[0].parts[0].text, "message-12");
+      assert.equal(calls[0][2].httpsAgent.keepAlive, true);
+      assert.equal(fixture.api.getSpeechText("x".repeat(500)).length, 223); // 220 + ...
+      assert.equal(fixture.api.getSpeechText("Hello"), "Hello");
+    } finally {
+      fixture.cleanup();
+    }
+  });
 });
 
 test("fast voice uses one Gemini multimodal request and stores transcript in chat context", async () => {
