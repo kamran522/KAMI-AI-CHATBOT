@@ -205,7 +205,7 @@ async function generateVoiceAnswer(chatId, audioBuffer, mimeType, { onRetry } = 
   }
   const transcript = typeof parsed?.transcript === "string" ? parsed.transcript.trim() : "";
   const answer = typeof parsed?.answer === "string" ? parsed.answer.trim() : "";
-  if (!transcript || /^NO_SPEECH[.!\\s]*$/i.test(transcript)) throw new Error("VOICE_NO_SPEECH");
+  if (!transcript || /^NO_SPEECH[.!\s]*$/i.test(transcript)) throw new Error("VOICE_NO_SPEECH");
   if (!answer) throw new Error("VOICE_INVALID_RESPONSE");
 
   chatHistory[chatId] = [
@@ -355,7 +355,8 @@ function getSafeErrorReply(error) {
   // Every failure gets a useful status; only temporary errors are retried.
   const prefix = "🔄 Updating, please wait...\n";
   if (error.message === "VOICE_TOO_LARGE") return "Voice note is too long or too large. Please send a voice note shorter than 3 minutes and 8 MB.";
-  if (error.message === "VOICE_INVALID_RESPONSE") return "I could not process that voice note. Please try again.";\n  if (error.message === "VOICE_NO_SPEECH" || error.message === "VOICE_EMPTY_AUDIO")
+  if (error.message === "VOICE_INVALID_RESPONSE") return "I could not process that voice note. Please try again.";
+  if (error.message === "VOICE_NO_SPEECH" || error.message === "VOICE_EMPTY_AUDIO")
     return "I couldn't understand the voice note. Please record it again.";
   if (error.message === "VOICE_UNSUPPORTED_FORMAT")
     return "This voice-note format is not supported. Please send a normal WhatsApp voice note.";
