@@ -45,6 +45,12 @@ trap - EXIT
 
 # Run live diagnostics before restarting. Credentials remain on this server.
 npm run check:gemini
+
+# The optional live-call feature has been retired. Stop its old PM2 service
+# if it was previously started, so a deleted script is not kept running.
+if pm2 describe kami-ai-calls > /dev/null 2>&1; then
+  pm2 delete kami-ai-calls
+fi
 pm2 restart kami-ai-chat-bot --update-env
 pm2 save
 
