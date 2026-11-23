@@ -92,6 +92,14 @@ sudo apt-get install -y ffmpeg
 ffmpeg -encoders | grep libopus
 ```
 
+Check speech generation and conversion before testing WhatsApp:
+
+```bash
+npm run check:voice
+```
+
+This performs one real Gemini TTS request using your API key and validates FFmpeg OGG/Opus conversion. It prints whether the error is from the speech API, a timeout, or encoding. It does not send a WhatsApp message, save the audio, or print your API key. A working `npm run check:gemini` only proves text generation works, **not voice synthesis**.
+
 The existing `GEMINI_API_KEY` or `key.json` is reused. Optional environment variables:
 
 | Variable | Default | Use |
@@ -102,11 +110,13 @@ The existing `GEMINI_API_KEY` or `key.json` is reused. Optional environment vari
 
 Voice replies are limited to **220 spoken characters by default** (change with `VOICE_MAX_SPOKEN_CHARS`, 120–450). The bot also sends only the most recent four conversation turns to Gemini for voice notes and reuses the HTTPS connection between its AI and speech requests. This reduces input and audio length; actual response time still depends on Gemini and WhatsApp. For diagnosis, check the `Voice-note timings (ms)` line in `pm2 logs kami-ai-chat-bot`.
 
-Voice synthesis defaults to a 14-second deadline, after which the bot returns the text answer instead of continuing long TTS retries. Adjust with `VOICE_TTS_TIMEOUT_MS` (milliseconds, allowed range 3000–60000). This is an upper bound on the **TTS request**, not a total response-time guarantee.
+Voice synthesis defaults to a 25-second deadline, after which the bot returns the text answer instead of continuing long TTS retries. Adjust with `VOICE_TTS_TIMEOUT_MS` (milliseconds, allowed range 3000–60000). This is an upper bound on the **TTS request**, not a total response-time guarantee.
 
 The selected models must be available to your Gemini API key. The audio-to-answer request and the text-to-speech request each consume Gemini API quota or paid credits. The existing `npm run check:gemini` command tests text generation only; it does not verify TTS model access.
 
 **Privacy:** Incoming voice-note bytes are sent to Google's Gemini API for transcription and processed in memory rather than stored locally. The resulting transcript is saved in the same `chat_history.json` file used for text conversations. Use this bot only where participants understand voice notes will be processed by Gemini.
+
+**Troubleshooting failed voice replies:** The bot prints `Voice reply failed at Gemini TTS`, `Voice reply failed at FFmpeg OGG/Opus encoding`, or `Voice reply failed at WhatsApp audio delivery` with safe diagnostic details and processing times. An HTTP 404 usually means the TTS model is unavailable to the API key, HTTP 429 can mean quota/rate limiting, and a timeout suggests the TTS service is too slow for the configured deadline. Change `VOICE_TTS_TIMEOUT_MS` only after checking the real error.
 
 **Limitations:** Voice notes are limited to 8 MB and 3 minutes. Long answers are spoken in shortened form and followed by the full text. Actual voice synthesis depends on the external Gemini TTS model; it cannot be guaranteed offline.
 
