@@ -46,10 +46,7 @@ trap - EXIT
 # Run live diagnostics before restarting. Credentials remain on this server.
 # Permit a deployment if Gemini is unavailable but a working Groq
 # fallback is configured. Never restart when neither provider passes.
-if [[ "${LOCAL_VOICE_ENABLED:-0}" == "1" && "${LOCAL_TEXT_ENABLED:-0}" == "1" ]]; then
-  echo "Local-only mode: checking Ollama, Whisper, and Piper before restart."
-  npm run check:local-voice
-elif npm run check:gemini; then
+if npm run check:gemini; then
   echo "Gemini text API is available."
 elif node -e 'process.exit(require("./groq").getGroqApiKey() ? 0 : 1)'; then
   echo "Gemini unavailable; validating Groq fallback."
