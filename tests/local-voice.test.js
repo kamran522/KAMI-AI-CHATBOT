@@ -67,7 +67,7 @@ test("per-chat local language commands persist without changing unrelated chats"
     assert.equal(s.api.handleVoiceCommand("chat-a", "ordinary message"), null);
     assert.match(s.api.handleVoiceCommand("chat-b", "/voice no-such-language"), /Unsupported/);
     assert.equal(s.api.handleVoiceCommand("chat-a", "/voice off").includes("off"), true);
-    assert.equal(JSON.parse(fs.readFileSync(path.join(s.dir, "local_voice_languages.json"))["chat-a"], "off");
+    assert.equal(JSON.parse(fs.readFileSync(path.join(s.dir, "local_voice_languages.json"), "utf8"))["chat-a"], "off");
     assert.equal(s.api.detectLanguage("یہ اردو ہے", "auto"), "urdu");
     assert.equal(s.api.detectLanguage("Hello world", "auto"), "english");
     assert.equal(s.api.detectLanguage("بلوچی", "balochi"), "balochi");
