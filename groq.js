@@ -7,7 +7,15 @@ const axios = require("axios");
 // Fixed HTTPS origin: never send an API key to a user-supplied host.
 const GROQ_BASE_URL = "https://api.groq.com/openai/v1";
 const KEY_FILE = path.join(__dirname, "key.json");
-const DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile";
+const DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b";
+// Groq retired the Llama 3.3 and Llama 3.1 endpoints for free/developer plans.
+// Alternatives are selected only when the primary model returns HTTP 404.
+const PREFERRED_CHAT_MODELS = [
+  "openai/gpt-oss-120b",
+  "openai/gpt-oss-20b",
+  "qwen/qwen3.8-27b",
+];
+let verifiedModel = null;
 const DEFAULT_TRANSCRIPTION_MODEL = "whisper-large-v3-turbo";
 const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
 
@@ -29,13 +37,35 @@ function groqError(error) {
   return error;
 }
 
+function getSelectedGroqModel() {
+  return process.env.GROQ_MODEL?.trim() || verifiedModel || DEFAULT_GROQ_MODEL;
+}
+
+// The official model endpoint helps recover when an unconfigured default is
+// unavailable. Never show the key, and do not choose audio or guardrail models.
+async function listGroqChatModels({ get = axios.get } = {}) {
+  const key = getGroqApiKey();
+  if (!key) throw groqError(new Error("GROQ_API_KEY_MISSING"));
+  const response = await get(GROQ_BASE_URL + "/models", {
+    headers: { Authorization: "Bearer " + key },
+    timeout: 15000,
+  });
+  if (!Array.isArray(response.data?.data)) throw new Error("GROQ_BAD_MODEL_LIST");
+  const available = new Set(response.data.data
+    .map((item) => item?.id)
+    .filter((id) => typeof id === "string"));
+  return PREFERRED_CHAT_MODELS.filter((id) => available.has(id));
+}
+
 async function generateGroqReply(text, history = [], prompt = "", {
   voiceReply = false,
   post = axios.post,
+  get = axios.get,
 } = {}) {
   const key = getGroqApiKey();
   if (!key) throw groqError(new Error("GROQ_API_KEY_MISSING"));
-  const model = process.env.GROQ_MODEL?.trim() || DEFAULT_GROQ_MODEL;
+  const explicitModel = process.env.GROQ_MODEL?.trim();
+  const model = getSelectedGroqModel();
   const messages = [
     { role: "system", content: String(prompt) +
       (voiceReply ? "\nReply in the same language as the speaker. Be short, natural, and suitable for spoken audio." : "") },
@@ -44,9 +74,9 @@ async function generateGroqReply(text, history = [], prompt = "", {
       .slice(-20).map(({ role, content }) => ({ role, content })),
     { role: "user", content: String(text) },
   ];
-  try {
+  const request = async (candidate) => {
     const response = await post(GROQ_BASE_URL + "/chat/completions", {
-      model, messages, max_completion_tokens: voiceReply ? 220 : 700,
+      model: candidate, messages, max_completion_tokens: voiceReply ? 220 : 700,
     }, {
       headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
       timeout: Math.min(60000, Math.max(3000, Number(process.env.GROQ_TIMEOUT_MS) || 18000)),
@@ -54,7 +84,31 @@ async function generateGroqReply(text, history = [], prompt = "", {
     const answer = response.data?.choices?.[0]?.message?.content;
     if (typeof answer !== "string" || !answer.trim()) throw new Error("GROQ_EMPTY_RESPONSE");
     return answer.trim();
+  };
+
+  try {
+    return await request(model);
   } catch (error) {
+    // A configured GROQ_MODEL is an explicit user choice: never override it.
+    // Only try alternative chat models for the auto-selected default's HTTP 404.
+    if (explicitModel || error.response?.status !== 404) throw groqError(error);
+    let alternatives;
+    try {
+      alternatives = (await listGroqChatModels({ get }))
+        .filter((candidate) => candidate !== model);
+    } catch {
+      // Keep the original 404, rather than hide it behind a model-list failure.
+      throw groqError(error);
+    }
+    for (const candidate of alternatives) {
+      try {
+        const answer = await request(candidate);
+        verifiedModel = candidate; // Avoid repeated 404 attempts for future messages.
+        return answer;
+      } catch (retryError) {
+        if (retryError.response?.status !== 404) throw groqError(retryError);
+      }
+    }
     throw groqError(error);
   }
 }
@@ -120,6 +174,6 @@ function describeGroqError(error) {
 }
 
 module.exports = {
-  GROQ_BASE_URL, getGroqApiKey, generateGroqReply,
+  GROQ_BASE_URL, getGroqApiKey, generateGroqReply, listGroqChatModels, getSelectedGroqModel,
   transcribeGroqVoiceNote, shouldFallbackToGroq, describeGroqError,
 };
