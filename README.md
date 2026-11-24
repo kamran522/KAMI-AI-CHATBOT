@@ -279,4 +279,3 @@ Do not delete `key.json` or `kami-ai-session/` while updating: they hold your cr
 - Never upload `key.json`, `kami-ai-session/`, or private chat history to GitHub.
 - `.gitignore` excludes these sensitive files.
 - Protect SSH access and keep server dependencies updated.
-- Code obfuscation does not protect API keys embedded in published files.
