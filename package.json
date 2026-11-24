@@ -9,8 +9,7 @@
     "test": "node --test tests/*.test.js",
     "check:gemini": "node scripts/check-gemini.js",
     "check:voice": "node scripts/check-voice.js",
-    "check:groq": "node scripts/check-groq.js",
-    "check:local-voice": "node scripts/check-local-voice.js"
+    "check:groq": "node scripts/check-groq.js"
   },
   "author": "Kamran Hasil (+923111008401)",
   "license": "MIT",
