@@ -7,7 +7,7 @@ const os = require("node:os");
 const path = require("node:path");
 const Module = require("node:module");
 
-function makeBot(post) {
+function makeBot(post, get) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "kami-groq-fallback-"));
   for (const name of ["kami.js", "groq.js", "custom_prompt.txt"]) {
     fs.copyFileSync(path.join(__dirname, "..", name), path.join(tempDir, name));
@@ -19,7 +19,13 @@ function makeBot(post) {
     if (request === "axios") return { post: (...params) => {
       requests.push(params);
       return post(...params);
-    } };
+    },
+      get: (...params) => {
+        requests.push(params);
+        if (!get) throw new Error("No Groq model listing was expected");
+        return get(...params);
+      },
+    };
     return originalLoad.call(this, request, ...args);
   };
   let bot;
@@ -81,7 +87,7 @@ test("Gemini 503 switches immediately to Groq, sends one notification and preser
       assert.deepEqual(notifications, [503]);
       assert.equal(fixture.requests.length, 2);
       assert.equal(fixture.requests[1][0], "https://api.groq.com/openai/v1/chat/completions");
-      assert.equal(fixture.requests[1][1].model, "llama-3.3-70b-versatile");
+      assert.equal(fixture.requests[1][1].model, "openai/gpt-oss-120b");
       assert.equal(fixture.requests[1][2].headers.Authorization, "Bearer " + process.env.GROQ_API_KEY);
       assert.ok(fixture.requests[1][1].messages[0].content.length > 20);
       assert.equal(fixture.requests[0][2].timeout, 12000);
@@ -187,5 +193,53 @@ test("Groq transcription failure does not invent a reply or modify history", asy
       fixture.cleanup();
       globalThis.fetch = originalFetch;
     }
+  });
+});
+
+test("Groq 404 on default model lists permitted models and switches to a working replacement", async () => {
+  await withKeys(async () => {
+    const fixture = makeBot(async (url, body) => {
+      if (url.includes("generativelanguage")) {
+        throw Object.assign(new Error("Gemini unavailable"), { response: { status: 503 } });
+      }
+      if (body.model === "openai/gpt-oss-120b") {
+        throw Object.assign(new Error("Model unavailable"), { response: { status: 404 } });
+      }
+      assert.equal(body.model, "openai/gpt-oss-20b");
+      return { data: { choices: [{ message: { content: "Groq replacement answer" } }] } };
+    }, async (url, config) => {
+      assert.equal(url, "https://api.groq.com/openai/v1/models");
+      assert.equal(config.headers.Authorization, "Bearer " + process.env.GROQ_API_KEY);
+      return { data: { data: [
+        { id: "whisper-large-v3-turbo" },
+        { id: "openai/gpt-oss-120b" },
+        { id: "openai/gpt-oss-20b" },
+      ] } };
+    });
+    try {
+      assert.equal(await fixture.bot.generateGeminiReply("chat", "Hello"), "Groq replacement answer");
+      const firstCalls = fixture.requests.slice();
+      assert.equal(firstCalls.filter((x) => x[0].endsWith("/models")).length, 1);
+      assert.equal(firstCalls.filter((x) => x[0].endsWith("/chat/completions")).length, 2);
+      assert.equal(await fixture.bot.generateGeminiReply("chat", "Next"), "Groq replacement answer");
+      // The new default is cached in the module and avoids repeated 404s/list requests.
+      assert.equal(fixture.requests.filter((x) => x[0].endsWith("/models")).length, 1);
+      assert.equal(fixture.requests.filter((x) => x[0].endsWith("/chat/completions")).length, 3);
+    } finally { fixture.cleanup(); }
+  });
+});
+
+test("explicit GROQ_MODEL is not silently overridden when that model is rejected", async () => {
+  await withKeys(async () => {
+    process.env.GROQ_MODEL = "invalid-manual-model";
+    const fixture = makeBot(async (url) => {
+      if (url.includes("generativelanguage")) throw new Error("Gemini failed");
+      throw Object.assign(new Error("Unknown model"), { response: { status: 404 } });
+    });
+    try {
+      await assert.rejects(fixture.bot.generateGeminiReply("chat", "Hello"),
+        (error) => error.groqFallback === true && error.response?.status === 404);
+      assert.equal(fixture.requests.length, 2);
+    } finally { fixture.cleanup(); }
   });
 });
