@@ -9,7 +9,7 @@ const { EventEmitter } = require("node:events");
 
 function withGeminiStub(post) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kami-recovery-"));
-  for (const file of ["kami.js", "custom_prompt.txt"]) {
+  for (const file of ["kami.js", "custom_prompt.txt", "groq.js"]) {
     fs.copyFileSync(path.join(__dirname, "..", file), path.join(dir, file));
   }
   const realLoad = Module._load;
