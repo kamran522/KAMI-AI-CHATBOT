@@ -2,7 +2,7 @@
 # Optional one-time CPU-only installation; does not restart or enable the bot.
 # Usage: bash scripts/setup-local-voice.sh [--balochi]
 set -Eeuo pipefail
-MODE="$1"
+MODE="${1:-}"
 if [[ -n "$MODE" && "$MODE" != "--balochi" ]]; then
   echo "Usage: bash scripts/setup-local-voice.sh [--balochi]" >&2
   exit 2
