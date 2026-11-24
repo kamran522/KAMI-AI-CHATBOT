@@ -84,7 +84,7 @@ To configure Groq, add `groqApiKey` to your **private**, gitignored `key.json` o
 
 Never put API keys into GitHub, WhatsApp, or public logs. Both `GEMINI_API_KEY` and `GROQ_API_KEY` environment variables are supported and override the corresponding `key.json` fields.
 
-Groq chat uses `llama-3.3-70b-versatile` by default. Groq speech-to-text uses `whisper-large-v3-turbo`. Supported environment overrides: `GROQ_MODEL`, `GROQ_TRANSCRIPTION_MODEL`, `GROQ_TIMEOUT_MS` (default 18000), `GEMINI_PRIMARY_TIMEOUT_MS` (default 12000 with Groq enabled), and `GEMINI_VOICE_TIMEOUT_MS` (default 18000 with Groq enabled). The models need to be available to your account.
+Groq chat uses `openai/gpt-oss-120b` by default, replacing the `llama-3.3-70b-versatile` model deprecated for Free and Developer accounts on August 16, 2026. If the default receives HTTP 404, the bot fetches `GET /openai/v1/models` and tries a listed replacement from `openai/gpt-oss-20b` or `qwen/qwen3.8-27b` (where available), caching the working choice. An explicit `GROQ_MODEL` setting is always respected and is not automatically replaced. Groq speech-to-text uses `whisper-large-v3-turbo`. Supported environment overrides: `GROQ_MODEL`, `GROQ_TRANSCRIPTION_MODEL`, `GROQ_TIMEOUT_MS` (default 18000), `GEMINI_PRIMARY_TIMEOUT_MS` (default 12000 with Groq enabled), and `GEMINI_VOICE_TIMEOUT_MS` (default 18000 with Groq enabled). The models need to be available to your account.
 
 Test Groq with a live text request:
 
@@ -92,6 +92,14 @@ Test Groq with a live text request:
 cd ~/KAMI-AI-CHATBOT
 npm run check:groq
 ```
+
+To test a specific current model without permanently changing the configuration:
+
+```bash
+GROQ_MODEL=openai/gpt-oss-120b npm run check:groq
+```
+
+Check the models exposed to your account in [Groq's model API documentation](https://console.groq.com/docs/models). A 404 for a configured model can mean that the model was retired or your Groq account cannot access it. Model permissions and pricing may differ by plan.
 
 **WhatsApp text:** When Groq is configured, the bot tries Gemini once and switches to Groq upon failure, without spending time on extra Gemini retries. Without Groq, the previous Gemini retry behavior is unchanged.
 
