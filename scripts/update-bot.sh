@@ -44,7 +44,17 @@ restore_prompt
 trap - EXIT
 
 # Run live diagnostics before restarting. Credentials remain on this server.
-npm run check:gemini
+# Permit a deployment if Gemini is unavailable but a working Groq
+# fallback is configured. Never restart when neither provider passes.
+if npm run check:gemini; then
+  echo "Gemini text API is available."
+elif node -e 'process.exit(require("./groq").getGroqApiKey() ? 0 : 1)'; then
+  echo "Gemini unavailable; validating Groq fallback."
+  npm run check:groq
+else
+  echo "ERROR: Gemini failed and no Groq fallback key is configured." >&2
+  exit 1
+fi
 
 # The optional live-call feature has been retired. Stop its old PM2 service
 # if it was previously started, so a deleted script is not kept running.

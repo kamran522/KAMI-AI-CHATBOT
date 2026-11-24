@@ -1,6 +1,6 @@
 # KAMI AI CHAT BOT
 
-A WhatsApp auto-reply bot powered by Google Gemini and Baileys. Incoming text messages receive text answers and incoming WhatsApp voice notes receive spoken answers automatically—no `!ai`, `/ai`, or other command is required.
+A WhatsApp auto-reply bot powered by Google Gemini, with Groq AI as an optional failover provider, using Baileys. Incoming text messages receive text answers and incoming WhatsApp voice notes receive spoken answers automatically—no `!ai`, `/ai`, or other command is required.
 
 **Creator:** Kamran Hasil  
 **WhatsApp:** +92 339 5267262  
@@ -11,6 +11,8 @@ A WhatsApp auto-reply bot powered by Google Gemini and Baileys. Incoming text me
 - Automatic replies to incoming WhatsApp text in private chats and groups
 - Faster WhatsApp voice-note replies: one Gemini audio request understands the note and drafts its response; a second request generates the voice (OGG/Opus)
 - Keeps conversation context between voice notes and text; text answers are used as a fallback if speech synthesis fails
+- Google Gemini integration with optional Groq failover for text replies and voice-note understanding
+- Groq Whisper fallback transcription when Gemini cannot understand a voice note
 - Google Gemini integration and a custom bot personality/prompt
 - Recent conversation context per chat
 - WhatsApp QR-code pairing
@@ -18,14 +20,14 @@ A WhatsApp auto-reply bot powered by Google Gemini and Baileys. Incoming text me
 - Automatic retry notifications: the bot says “🔄 Updating, please wait...” when Gemini has a temporary outage
 - Clearer final error messages and server-side diagnostic details
 
-> **Note:** The prompt contains examples of searches, appointments, and reminders. Those actions are not standalone integrations in this repository. Automatic replies require a working Gemini API key, internet connection, and a connected WhatsApp session.
+> **Note:** The prompt contains examples of searches, appointments, and reminders. Those actions are not standalone integrations in this repository. Text replies require a working Gemini or Groq API key; synthesized voice replies also require Gemini TTS, an internet connection, and a connected WhatsApp session.
 
 ## Requirements
 
 - Linux server (the commands below use Ubuntu/Debian conventions)
 - Node.js **18 or newer** and npm
 - Git
-- Google Gemini API key
+- Google Gemini API key or a Groq key for text and voice understanding (Gemini still required for voice synthesis)
 - A WhatsApp account to link as a device
 - **FFmpeg with libopus support** for outgoing WhatsApp voice-note encoding (`sudo apt-get install -y ffmpeg`)
 
@@ -67,22 +69,46 @@ If needed, select a different model for a single command:
 GEMINI_MODEL=gemini-3.5-flash-lite npm run check:gemini
 ```
 
-## What happens when Gemini fails
+## Groq AI automatic fallback
 
-When Gemini returns a temporary HTTP 429, HTTP 5xx, timeout, or certain network errors, the bot sends a **“🔄 Updating, please wait...”** WhatsApp message (once per incoming request) and retries up to **two additional times**, using backoff and honoring short `Retry-After` delays. If a retry succeeds, the normal AI answer follows.
+The bot attempts **Gemini first**. If it fails (including timeout, quota, invalid/missing Gemini key, or unavailable model), the bot automatically asks **Groq chat** using its separate private API key, preserving the same custom prompt and chat history. Gemini safety blocks are not automatically bypassed.
 
-If the retries fail, or the error is permanent (invalid key, unavailable model, billing issue), the bot sends an error message starting with **“🔄 Updating, please wait...”** and including a short explanation. Permanent errors **are not fixed automatically**. Check the server logs and correct the cause before expecting normal responses. The bot does not endlessly retry and does not automatically resend a failed question after its retries are exhausted.
+To configure Groq, add `groqApiKey` to your **private**, gitignored `key.json` on the server. Keep the Gemini key if you have one:
 
-Run `npm test` to check the bot’s message handling and retry behavior without a live Gemini API key. Run `npm run check:gemini` on the server with a real key to determine whether Gemini access works.
+```json
+{
+  "geminiApiKey": "YOUR_REAL_GEMINI_KEY",
+  "groqApiKey": "YOUR_REAL_GROQ_KEY"
+}
+```
+
+Never put API keys into GitHub, WhatsApp, or public logs. Both `GEMINI_API_KEY` and `GROQ_API_KEY` environment variables are supported and override the corresponding `key.json` fields.
+
+Groq chat uses `llama-3.3-70b-versatile` by default. Groq speech-to-text uses `whisper-large-v3-turbo`. Supported environment overrides: `GROQ_MODEL`, `GROQ_TRANSCRIPTION_MODEL`, `GROQ_TIMEOUT_MS` (default 18000), `GEMINI_PRIMARY_TIMEOUT_MS` (default 12000 with Groq enabled), and `GEMINI_VOICE_TIMEOUT_MS` (default 18000 with Groq enabled). The models need to be available to your account.
+
+Test Groq with a live text request:
+
+```bash
+cd ~/KAMI-AI-CHATBOT
+npm run check:groq
+```
+
+**WhatsApp text:** When Groq is configured, the bot tries Gemini once and switches to Groq upon failure, without spending time on extra Gemini retries. Without Groq, the previous Gemini retry behavior is unchanged.
+
+**WhatsApp voice notes:** Gemini is the primary voice-understanding model. If it fails, Groq Whisper transcribes the note and Groq chat generates the reply. **Speaking the reply still requires Gemini TTS.** If Gemini TTS is unavailable or no Gemini key is configured, the bot delivers the Groq answer as text; this integration does not replace Gemini speech synthesis.
+
+Voice fallback shares the note with Groq, a separate third party, when Gemini fails. The bot does not save original audio files, but chat transcripts continue to be stored in `chat_history.json`. Different providers may charge separately and have different privacy policies.
+
+If both providers fail, the bot sends an error message rather than silently dropping the reply. The update script checks Gemini and, if it fails, validates Groq before restarting PM2. API keys stay on your server and are never uploaded by the updater.
 
 ## Voice-note replies
 
 Voice notes sent to the bot (WhatsApp push-to-talk audio, including disappearing voice notes) are processed automatically in private chats and groups. Audio files sent as attachments are not processed as voice notes.
 
-1. The bot downloads an incoming voice note in memory. **One Gemini request** transcribes it and produces the conversational answer in the user's language (previously two requests).
+1. The bot downloads an incoming voice note in memory. **One Gemini request** transcribes it and drafts the answer. If this fails, Groq Whisper and Groq chat can provide the transcript and answer.
 2. The transcript and answer enter the existing conversation context.
 3. Gemini Text-to-Speech speaks a concise response (default limit of 220 characters). FFmpeg converts its WAV output to OGG/Opus, and Baileys sends it with `ptt: true` so WhatsApp displays a voice message.
-4. If speech synthesis or FFmpeg fails, the bot sends the **text answer** instead. If transcription fails, it sends a short error message. Large notes (over **8 MB** or **3 minutes**) are rejected.
+4. If Gemini speech synthesis or FFmpeg fails, the bot sends the **text answer** instead. If transcription fails, it sends a short error message. Large notes (over **8 MB** or **3 minutes**) are rejected.
 
 Install FFmpeg on the Linux server before starting the bot:
 
