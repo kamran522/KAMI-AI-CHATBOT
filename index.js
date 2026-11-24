@@ -16,25 +16,9 @@ const pino = require("pino");
 const qrcode = require("qrcode-terminal");
 const {
   extractIncomingText, generateGeminiReply, splitReply, getSafeErrorReply,
-  describeGeminiError, generateVoiceAnswer, generateLocalReply, synthesizeVoiceReply, getSpeechText,
+  describeGeminiError, generateVoiceAnswer, synthesizeVoiceReply, getSpeechText,
 } = require("./kami");
 const { extractIncomingVoiceNote, validateVoiceNote, wavToWhatsAppVoiceNote } = require("./voice");
-const {
-  voiceEnabled, localLanguage, handleVoiceCommand, transcribeLocalVoice,
-  synthesizeLocalVoice, safeLocalVoiceError,
-} = require("./local-voice");
-const { isEnabled: localTextEnabled, safeLocalAiError } = require("./local-ai");
-
-// At most one CPU-heavy voice request at a time on four-core machines.
-let localQueue = Promise.resolve();
-let queuedLocalVoices = 0;
-function withLocalVoiceSlot(action) {
-  if (queuedLocalVoices >= 6) throw new Error("LOCAL_VOICE_BUSY");
-  queuedLocalVoices++;
-  const next = localQueue.then(action);
-  localQueue = next.catch(() => {});
-  return next.finally(() => { queuedLocalVoices--; });
-}
 
 async function startKamiBot() {
   const { state, saveCreds } = await useMultiFileAuthState(`./${SESSION_NAME}`);
@@ -95,58 +79,6 @@ async function startKamiBot() {
               { logger: pino({ level: "silent" }), reuploadRequest: client.updateMediaMessage }
             );
             const downloadedMs = Date.now() - startedDownloading;
-            if (voiceEnabled() && localLanguage(jid) !== "off") {
-              try {
-                await withLocalVoiceSlot(async () => {
-                  const requested = localLanguage(jid);
-                  const speechStart = Date.now();
-                  const { transcript, language } = await transcribeLocalVoice(audio, mimeType, requested);
-                  const sttMs = Date.now() - speechStart;
-                  const answerStart = Date.now();
-                  const answer = await generateLocalReply(jid, transcript, {
-                    language, voiceReply: true,
-                  });
-                  const aiMs = Date.now() - answerStart;
-                  try {
-                    const ttsStart = Date.now();
-                    const wav = await synthesizeLocalVoice(answer, language);
-                    const ttsMs = Date.now() - ttsStart;
-                    const ogg = await wavToWhatsAppVoiceNote(wav);
-                    await client.sendMessage(
-                      jid, { audio: ogg, ptt: true, mimetype: "audio/ogg; codecs=opus" },
-                      { quoted: message }
-                    );
-                    if (answer.trim().length > 240) {
-                      for (const chunk of splitReply(answer)) {
-                        await client.sendMessage(jid, { text: chunk }, { quoted: message });
-                      }
-                    }
-                    console.info(`Local voice timings (ms): download=${downloadedMs}, stt=${sttMs}, ai=${aiMs}, tts=${ttsMs}`);
-                  } catch (error) {
-                    error.localAnswer = answer; // send the useful text if speech conversion failed
-                    throw error;
-                  }
-                });
-                return;
-              } catch (localError) {
-                console.error("Local voice pipeline failed:", safeLocalVoiceError(localError));
-                if (typeof localError.localAnswer === "string") {
-                  for (const chunk of splitReply("🔊 Local speech failed; text answer:\n" + localError.localAnswer)) {
-                    await client.sendMessage(jid, { text: chunk }, { quoted: message });
-                  }
-                  return;
-                }
-                if (process.env.LOCAL_VOICE_ALLOW_CLOUD_FALLBACK !== "1") {
-                  const detail = localError.message === "LOCAL_VOICE_BUSY"
-                    ? "Local voice is busy. Please try again shortly."
-                    : "Local voice is unavailable (" + safeLocalVoiceError(localError) +
-                      "). Check server setup or select /voice off.";
-                  await client.sendMessage(jid, { text: detail }, { quoted: message });
-                  return;
-                }
-                console.warn("Local voice failed; explicit cloud fallback is enabled.");
-              }
-            }
             // Single multimodal request replaces separate transcription + reply calls.
             const startedGemini = Date.now();
             const answer = await generateVoiceAnswer(jid, audio, mimeType, { onRetry });
@@ -191,11 +123,8 @@ async function startKamiBot() {
               }
             }
           } else {
-            const commandReply = handleVoiceCommand(jid, text);
-            const answer = commandReply !== null ? commandReply :
-              localTextEnabled()
-                ? await generateLocalReply(jid, text, { language: localLanguage(jid) })
-                : await generateGeminiReply(jid, text, { onRetry });
+            // Keep automatic text replies unchanged.
+            const answer = await generateGeminiReply(jid, text, { onRetry });
             for (const chunk of splitReply(answer)) {
               await client.sendMessage(jid, { text: chunk }, { quoted: message });
             }
@@ -203,11 +132,7 @@ async function startKamiBot() {
         } catch (error) {
           console.error("Gemini auto-reply failed:", describeGeminiError(error));
           try {
-            await client.sendMessage(jid, {
-            text: error.message?.startsWith("LOCAL_OLLAMA_")
-              ? "Local AI is unavailable (" + safeLocalAiError(error) + "). Check Ollama on the server."
-              : getSafeErrorReply(error),
-          }, { quoted: message });
+            await client.sendMessage(jid, { text: getSafeErrorReply(error) }, { quoted: message });
           } catch (sendError) {
             console.error("Could not send error reply:", sendError.message);
           }
