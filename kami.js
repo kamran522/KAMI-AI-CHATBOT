@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const axios = require("axios");
 const https = require("node:https");
+const { getGroqApiKey, generateGroqReply, transcribeGroqVoiceNote, shouldFallbackToGroq } = require("./groq");
 
 const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 const MAX_HISTORY_MESSAGES = 20;
@@ -83,6 +84,8 @@ function extractIncomingText(message) {
 
 async function generateGeminiReply(chatId, userText, { onRetry, voiceReply = false } = {}) {
   const past = Array.isArray(chatHistory[chatId]) ? chatHistory[chatId] : [];
+  let answer;
+  try {
   const apiKey = loadApiKey();
   if (!apiKey) throw new Error("GEMINI_API_KEY_MISSING");
 
@@ -108,19 +111,41 @@ async function generateGeminiReply(chatId, userText, { onRetry, voiceReply = fal
     },
     {
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      timeout: 60000,
+      timeout: getGroqApiKey()
+        ? Math.min(60000, Math.max(3000, Number(process.env.GEMINI_PRIMARY_TIMEOUT_MS) || 12000))
+        : 60000,
     },
-    onRetry
+    getGroqApiKey() ? undefined : onRetry,
+    getGroqApiKey() ? 0 : 2
   );
 
-  const answer = (response.data?.candidates?.[0]?.content?.parts || [])
+  answer = (response.data?.candidates?.[0]?.content?.parts || [])
     .filter((part) => typeof part.text === "string" && !part.thought)
     .map((part) => part.text)
     .join("\n")
     .trim();
   if (!answer) {
     const cause = response.data?.candidates?.[0]?.finishReason || response.data?.promptFeedback?.blockReason || "No text in candidate";
-    throw new Error(`GEMINI_EMPTY_RESPONSE: ${cause}`);
+    const error = new Error(`GEMINI_EMPTY_RESPONSE: ${cause}`);
+    error.geminiFinishReason = String(cause);
+    error.geminiSafetyBlocked = Boolean(response.data?.promptFeedback?.blockReason) ||
+      /^(SAFETY|PROHIBITED_CONTENT|BLOCKLIST|SPII)$/.test(String(cause));
+    throw error;
+  }
+
+  } catch (geminiError) {
+    if (!shouldFallbackToGroq(geminiError)) throw geminiError;
+    console.warn("Gemini failed; switching to Groq:", describeGeminiError(geminiError));
+    if (typeof onRetry === "function") {
+      try { await onRetry(geminiError); }
+      catch (notificationError) { console.warn("Unable to notify fallback:", notificationError.message); }
+    }
+    try {
+      answer = await generateGroqReply(userText, past, loadPrompt(), { voiceReply });
+    } catch (groqError) {
+      groqError.geminiFailure = geminiError;
+      throw groqError;
+    }
   }
 
   chatHistory[chatId] = [
@@ -146,6 +171,35 @@ function getSpeechText(answer) {
  * Synthesis remains separate because its output is audio.
  */
 async function generateVoiceAnswer(chatId, audioBuffer, mimeType, { onRetry } = {}) {
+  try {
+    return await generateGeminiVoiceAnswer(chatId, audioBuffer, mimeType, {
+      onRetry: getGroqApiKey() ? undefined : onRetry,
+    });
+  } catch (geminiError) {
+    if (!shouldFallbackToGroq(geminiError)) throw geminiError;
+    console.warn("Gemini voice failed; switching to Groq Whisper:", describeGeminiError(geminiError));
+    if (typeof onRetry === "function") {
+      try { await onRetry(geminiError); }
+      catch (notificationError) { console.warn("Unable to notify fallback:", notificationError.message); }
+    }
+    const past = Array.isArray(chatHistory[chatId]) ? chatHistory[chatId] : [];
+    try {
+      const transcript = await transcribeGroqVoiceNote(audioBuffer, mimeType);
+      const answer = await generateGroqReply(transcript, past, loadPrompt(), { voiceReply: true });
+      chatHistory[chatId] = [...past,
+        { role: "user", content: transcript },
+        { role: "assistant", content: answer },
+      ].slice(-MAX_HISTORY_MESSAGES);
+      saveChatHistory();
+      return answer;
+    } catch (groqError) {
+      groqError.geminiFailure = geminiError;
+      throw groqError;
+    }
+  }
+}
+
+async function generateGeminiVoiceAnswer(chatId, audioBuffer, mimeType, { onRetry } = {}) {
   if (!Buffer.isBuffer(audioBuffer) || !audioBuffer.length) throw new Error("VOICE_EMPTY_AUDIO");
   if (audioBuffer.length > 8 * 1024 * 1024) throw new Error("VOICE_TOO_LARGE");
   const apiKey = loadApiKey();
@@ -195,10 +249,13 @@ async function generateVoiceAnswer(chatId, audioBuffer, mimeType, { onRetry } = 
     },
     {
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      timeout: 45000,
+      timeout: getGroqApiKey()
+        ? Math.min(45000, Math.max(5000, Number(process.env.GEMINI_VOICE_TIMEOUT_MS) || 18000))
+        : 45000,
       httpsAgent: voiceHttpsAgent,
     },
-    onRetry
+    onRetry,
+    getGroqApiKey() ? 0 : 2
   );
   const raw = (response.data?.candidates?.[0]?.content?.parts || [])
     .filter((p) => typeof p.text === "string" && !p.thought)
@@ -359,8 +416,11 @@ function describeGeminiError(error) {
   const upstream = error.response?.data?.error?.message;
   const description = typeof upstream === "string" ? upstream : error.message || "Unknown error";
   const key = loadApiKey();
+  const groqKey = getGroqApiKey();
   let safe = String(description);
   if (key) safe = safe.split(key).join("[REDACTED]");
+  if (groqKey) safe = safe.split(groqKey).join("[REDACTED]");
+  safe = safe.replace(/\bgsk_[A-Za-z0-9_-]{12,}/g, "[REDACTED]");
   safe = safe.replace(/AIza[0-9A-Za-z_-]{20,}/g, "[REDACTED]");
   return `${status ? `HTTP ${status}` : "No HTTP response"}${code}: ${safe.slice(0, 500)}`;
 }
@@ -368,6 +428,12 @@ function describeGeminiError(error) {
 function getSafeErrorReply(error) {
   // Every failure gets a useful status; only temporary errors are retried.
   const prefix = "🔄 Updating, please wait...\n";
+  if (error.groqFallback) {
+    const status = error.response?.status;
+    if (status === 401 || status === 403) return prefix + "Gemini did not respond and the Groq API key was rejected. Contact the bot owner.";
+    if (status === 429) return prefix + "Gemini did not respond and Groq reached its rate limit. Please try again later.";
+    return prefix + "Both Gemini and Groq are unavailable right now. Please try again later.";
+  }
   if (error.message === "VOICE_TOO_LARGE") return "Voice note is too long or too large. Please send a voice note shorter than 3 minutes and 8 MB.";
   if (error.message === "VOICE_INVALID_RESPONSE") return "I could not process that voice note. Please try again.";
   if (error.message === "VOICE_NO_SPEECH" || error.message === "VOICE_EMPTY_AUDIO")
