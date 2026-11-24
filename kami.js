@@ -157,6 +157,21 @@ async function generateGeminiReply(chatId, userText, { onRetry, voiceReply = fal
   return answer;
 }
 
+// Offline Ollama path shares the same chat history and custom prompt as Gemini.
+// No cloud fallback happens inside this function.
+async function generateLocalReply(chatId, text, { language = "auto", voiceReply = false } = {}) {
+  const { generateOllamaAnswer } = require("./local-ai");
+  const past = Array.isArray(chatHistory[chatId]) ? chatHistory[chatId] : [];
+  const answer = await generateOllamaAnswer(text, past, loadPrompt(), { language, voiceReply });
+  chatHistory[chatId] = [
+    ...past,
+    { role: "user", content: text },
+    { role: "assistant", content: answer },
+  ].slice(-MAX_HISTORY_MESSAGES);
+  saveChatHistory();
+  return answer;
+}
+
 function getSpeechText(answer) {
   const trimmed = String(answer || "").trim();
   if (!trimmed) throw new Error("VOICE_EMPTY_REPLY");
@@ -457,5 +472,5 @@ function getSafeErrorReply(error) {
 module.exports = {
   extractIncomingText, generateGeminiReply, splitReply, getSafeErrorReply,
   describeGeminiError, loadApiKey, readChatHistory, transcribeVoiceNote,
-  synthesizeVoiceReply, getSpeechText, generateVoiceAnswer, extractTtsWav,
+  synthesizeVoiceReply, getSpeechText, generateVoiceAnswer, generateLocalReply, extractTtsWav,
 };

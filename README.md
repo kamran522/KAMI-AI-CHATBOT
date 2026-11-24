@@ -109,6 +109,69 @@ Voice fallback shares the note with Groq, a separate third party, when Gemini fa
 
 If both providers fail, the bot sends an error message rather than silently dropping the reply. The update script checks Gemini and, if it fails, validates Groq before restarting PM2. API keys stay on your server and are never uploaded by the updater.
 
+## Fully local voice-to-voice (Balochi, Urdu, English)
+
+An **opt-in, CPU-only** path allows WhatsApp voice notes to be understood, answered and spoken without paid AI APIs. Existing Gemini/Groq integration remains **unchanged until local mode is enabled**.
+
+| Language | Recognition | Spoken replies | Caveat |
+| --- | --- | --- | --- |
+| English | whisper.cpp multilingual `small` | Piper `en_US-lessac-medium` | CPU speed varies with length |
+| Urdu | whisper.cpp multilingual `small` | Piper `ur_PK-fasih-medium` | Quality varies for accents and code-switching |
+| Balochi (Southern/Makrani) | Optional `umairjamali/balochi-whisper-small-v3` | Optional `facebook/mms-tts-bcc-script_arabic` | **Experimental**: held-out WER ~54%; Balochi TTS model is non-commercial (CC-BY-NC 4.0) |
+
+Balochi models are **not** downloaded by default. The fine-tuned ASR model uses Urdu-script decoding and is not a general Balochi recognizer. Southern Balochi TTS expects text in Arabic/Perso-Arabic script. **Ollama Qwen3 4B has not been independently verified to produce fluent Balochi.** Use explicit `/voice balochi` mode and review outputs for accuracy.
+
+### One-time server setup
+
+The install fits a 15 GiB RAM / four-core Linux server, but Balochi inference may be slow. The installed models are stored under `~/.local/share/kami-local-voice` (or `LOCAL_VOICE_DIR`), outside Git. None of these downloads happen automatically during a normal Git pull.
+
+```bash
+cd ~/KAMI-AI-CHATBOT
+sudo apt-get update
+sudo apt-get install -y python3-venv python3-pip git cmake build-essential ffmpeg curl
+# Install Ollama from: https://ollama.com/download/linux
+ollama pull qwen3:4b
+bash scripts/setup-local-voice.sh
+npm run check:local-voice
+```
+
+The script compiles Whisper.cpp, downloads its multilingual small checkpoint, installs Piper in a private Python environment, and downloads English and Urdu voice models. It does not install Ollama by itself. Check that the local Ollama service is running on `127.0.0.1:11434`.
+
+**Optional Balochi (non-commercial only):** Read the [Balochi MMS model license](https://huggingface.co/facebook/mms-tts-bcc-script_arabic) before installing the Balochi speech models:
+
+```bash
+bash scripts/setup-local-voice.sh --balochi
+npm run check:local-voice -- --balochi
+```
+
+This downloads CPU PyTorch, Transformers and separate Balochi ASR/TTS checkpoints. The ASR model was evaluated on only 240 held-out clips with about 54% word error rate. Balochi inference is experimental, especially on unseen speakers and dialects, and may take much longer than Urdu/English.
+
+### Enable local-only responses
+
+The cloud behavior remains the default until you explicitly enable the offline modes:
+
+```bash
+cd ~/KAMI-AI-CHATBOT
+LOCAL_VOICE_ENABLED=1 LOCAL_TEXT_ENABLED=1 pm2 restart kami-ai-chat-bot --update-env
+pm2 save
+```
+
+When deploying future code updates, include these settings so the updater checks local dependencies rather than live Gemini/Groq:
+
+```bash
+LOCAL_VOICE_ENABLED=1 LOCAL_TEXT_ENABLED=1 bash scripts/update-bot.sh
+```
+
+From WhatsApp send `/voice english`, `/voice urdu`, `/voice balochi`, or `/voice auto` to set the speech path **for that chat**. `/voice status` displays the setting. `/voice off` restores the cloud voice path for that chat. Auto mode supports Urdu and English best; **it does not reliably identify Balochi**.
+
+With `LOCAL_TEXT_ENABLED=1`, normal text replies use Ollama rather than Gemini/Groq. It shares the existing custom prompt and chat history. With `LOCAL_VOICE_ENABLED=1`, voice recordings are processed locally and deleted from temporary storage after processing. If local speech synthesis fails after Ollama generates an answer, the bot sends the text answer. If recognition or local AI fails, it returns a diagnostic instead of silently contacting a cloud provider. `LOCAL_VOICE_ALLOW_CLOUD_FALLBACK=1` explicitly allows the original cloud voice path, which may send recordings to Gemini/Groq.
+
+Incoming WhatsApp audio is converted by FFmpeg to 16-kHz mono WAV; transcription uses Whisper.cpp (or opt-in Balochi Whisper); Ollama Qwen3 4B answers; Piper (or Southern Balochi MMS) synthesizes WAV; the existing FFmpeg encoder converts to WhatsApp-compatible OGG/Opus. CPU-intensive voice jobs are queued one at a time. This supports WhatsApp **voice notes**, not real-time WhatsApp telephone calls.
+
+Optional settings: `LOCAL_AI_MODEL` (default `qwen3:4b`), `LOCAL_VOICE_DIR`, `LOCAL_WHISPER_BIN`, `LOCAL_WHISPER_MODEL`, `LOCAL_AI_TIMEOUT_MS` (default 90 seconds), `LOCAL_VOICE_DEFAULT_LANGUAGE` (default `auto`), `LOCAL_TEXT_ENABLED`, `LOCAL_VOICE_ENABLED`. Models are downloaded once; there are no ongoing model API charges in local-only mode, but your server/electricity and maintenance still cost money.
+
+**Limitations:** `npm run check:local-voice` verifies local files and Ollama availability, not actual speech quality, latency, or model licensing for your use case. Balochi TTS is **CC-BY-NC 4.0** and is not permitted for commercial deployment without appropriate authorization. Evaluate all three languages with actual WhatsApp recordings before treating them as production-ready. 
+
 ## Voice-note replies
 
 Voice notes sent to the bot (WhatsApp push-to-talk audio, including disappearing voice notes) are processed automatically in private chats and groups. Audio files sent as attachments are not processed as voice notes.
