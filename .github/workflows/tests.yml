@@ -13,15 +13,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - run: bash -n scripts/update-bot.sh && bash -n scripts/setup-local-voice.sh
+      - run: bash -n scripts/update-bot.sh
       # The unchanged FFmpeg conversion path was validated on previous commits.
       # Avoid letting a slow Ubuntu package mirror block PR auto-merging.
       - name: Install FFmpeg for full test on main
         if: github.event_name == 'push'
         run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg
       - run: npm install --ignore-scripts --no-audit --no-fund
-      - run: node --check voice.js && node --check kami.js && node --check index.js && node --check scripts/check-voice.js && node --check groq.js && node --check scripts/check-groq.js && node --check local-voice.js && node --check local-ai.js && node --check scripts/check-local-voice.js
-      - run: python3 -m py_compile scripts/local-balochi.py
+      - run: node --check voice.js && node --check kami.js && node --check index.js && node --check scripts/check-voice.js && node --check groq.js && node --check scripts/check-groq.js
       - run: npm test
 
   auto-merge:

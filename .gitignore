@@ -9,10 +9,3 @@ chat_history.json
 *.log
 api_route_models.json
 api_route_models.json.tmp-*
-
-# Local audio preferences and private downloaded model assets
-local_voice_languages.json
-local_voice_languages.json.tmp-*
-.local-voice/
-local-voice-assets/
-__pycache__/
