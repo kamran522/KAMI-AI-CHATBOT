@@ -55,32 +55,32 @@ async function withKeys(run) {
   }
 }
 
-test("Groq succeeds without contacting Gemini and preserves history", async () => {
+test("Gemini succeeds without contacting Groq and preserves history", async () => {
   await withKeys(async () => {
     const f = makeBot(async url => {
-      assert.match(url, /api.groq.com/);
-      return { data: { choices: [{ message: { content: "Groq answer" } }] } };
+      assert.match(url, /generativelanguage/);
+      return { data: { candidates: [{ content: { parts: [{ text: "Gemini answer" }] } }] } };
     });
     try {
-      assert.equal(await f.bot.generateGeminiReply("chat", "Hi"), "Groq answer");
+      assert.equal(await f.bot.generateGeminiReply("chat", "Hi"), "Gemini answer");
       assert.equal(f.requests.length, 1);
-      assert.deepEqual(f.bot.readChatHistory().chat.map(r => r.content), ["Hi", "Groq answer"]);
+      assert.deepEqual(f.bot.readChatHistory().chat.map(r => r.content), ["Hi", "Gemini answer"]);
     } finally { f.cleanup(); }
   });
 });
 
 for (const status of [401, 429, 503]) {
-  test("Groq HTTP " + status + " falls back to Gemini", async () => {
+  test("Gemini HTTP " + status + " falls back to Groq", async () => {
     await withKeys(async () => {
       const f = makeBot(async url => {
-        if (url.includes("api.groq.com")) throw Object.assign(new Error("Groq failure"), { response: { status } });
-        return { data: { candidates: [{ content: { parts: [{ text: "Gemini answer" }] } }] } };
+        if (url.includes("generativelanguage")) throw Object.assign(new Error("Gemini failure"), { response: { status } });
+        return { data: { choices: [{ message: { content: "Groq answer" } }] } };
       });
       try {
-        assert.equal(await f.bot.generateGeminiReply("chat", "Hi"), "Gemini answer");
+        assert.equal(await f.bot.generateGeminiReply("chat", "Hi"), "Groq answer");
         assert.equal(f.requests.length, 2);
-        assert.match(f.requests[0][0], /api.groq.com/);
-        assert.match(f.requests[1][0], /generativelanguage/);
+        assert.match(f.requests[0][0], /generativelanguage/);
+        assert.match(f.requests[1][0], /api.groq.com/);
       } finally { f.cleanup(); }
     });
   });
@@ -90,28 +90,28 @@ test("Both providers failing leaves history unchanged", async () => {
   await withKeys(async () => {
     const f = makeBot(async () => { throw new Error("network"); });
     try {
-      await assert.rejects(f.bot.generateGeminiReply("chat", "Hi"), e => Boolean(e.groqFailure));
+      await assert.rejects(f.bot.generateGeminiReply("chat", "Hi"), e => Boolean(e.geminiFailure));
       assert.deepEqual(f.bot.readChatHistory(), {});
     } finally { f.cleanup(); }
   });
 });
 
-test("Groq transcribes voice and answers without Gemini", async () => {
+test("Groq transcribes and answers when Gemini audio fails", async () => {
   await withKeys(async () => {
     const original = globalThis.fetch;
     globalThis.fetch = async () => ({ ok: true, json: async () => ({ text: "Hello" }) });
     const f = makeBot(async url => {
-      assert.match(url, /api.groq.com/);
+      if (url.includes("generativelanguage")) throw new Error("Gemini unavailable");
       return { data: { choices: [{ message: { content: "Hi" } }] } };
     });
     try {
       assert.equal(await f.bot.generateVoiceAnswer("chat", Buffer.from("audio"), "audio/ogg"), "Hi");
-      assert.equal(f.requests.length, 1);
+      assert.equal(f.requests.length, 2);
     } finally { f.cleanup(); globalThis.fetch = original; }
   });
 });
 
-test("Groq transcription failure falls back to Gemini audio", async () => {
+test("Gemini audio succeeds without Groq transcription", async () => {
   await withKeys(async () => {
     const original = globalThis.fetch;
     globalThis.fetch = async () => ({ ok: false, status: 429 });
@@ -168,7 +168,7 @@ test("explicit GROQ_MODEL is not silently overridden when that model is rejected
     });
     try {
       await assert.rejects(fixture.bot.generateGeminiReply("chat", "Hello"),
-        (error) => error.groqFailure?.response?.status === 404);
+        (error) => error.response?.status === 404 && Boolean(error.geminiFailure));
       assert.equal(fixture.requests.length, 2);
     } finally { fixture.cleanup(); }
   });
