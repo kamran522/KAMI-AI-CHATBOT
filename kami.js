@@ -37,102 +37,6 @@ function loadApiKey() {
 }
 
 
-// NVIDIA hosted NIM endpoints; credentials are never sent to configurable hosts.
-function getNvidiaApiKey() {
-  let key = process.env.NVIDIA_API_KEY?.trim();
-  if (!key) {
-    try {
-      const config = JSON.parse(fs.readFileSync(KEY_FILE, "utf8"));
-      key = config.nvidiaApiKey || config.nvidia_api_key;
-    } catch {}
-  }
-  return typeof key === "string" && !key.trim().startsWith("YOUR_") ? key.trim() : "";
-}
-
-async function generateNvidiaReply(text, history, { voiceReply = false } = {}) {
-  const key = getNvidiaApiKey();
-  if (!key) throw new Error("NVIDIA_API_KEY_MISSING");
-  const messages = [
-    { role: "system", content: loadPrompt() + (voiceReply ? "\nAnswer briefly in the speaker's language, suitable for speech." : "") },
-    ...history.filter(item => typeof item?.content === "string" && ["user", "assistant"].includes(item.role)).slice(-20).map(({role, content}) => ({role, content})),
-    { role: "user", content: text },
-  ];
-  const response = await axios.post("https://integrate.api.nvidia.com/v1/chat/completions", {
-    model: process.env.NVIDIA_MODEL?.trim() || "nvidia/nemotron-3.5-super-vl-120b-a12b",
-    messages, stream: false, max_tokens: 2048, temperature: 0.5,
-  }, { headers: { Authorization: "Bearer " + key }, timeout: 20000 });
-  const answer = response.data?.choices?.[0]?.message?.content;
-  if (typeof answer !== "string" || !answer.trim()) throw new Error("NVIDIA_EMPTY_RESPONSE");
-  return answer.trim();
-}
-
-// Hosted Parakeet HTTP endpoint accepts mono WAV. FFmpeg converts WhatsApp Opus.
-async function transcribeNvidiaVoice(audio) {
-  const key = getNvidiaApiKey();
-  if (!key) throw new Error("NVIDIA_API_KEY_MISSING");
-  const { spawn } = require("node:child_process");
-  const wav = await new Promise((resolve, reject) => {
-    const child = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", "-f", "wav", "pipe:1"], {stdio:["pipe","pipe","ignore"]});
-    const chunks = [];
-    let bytes = 0;
-    const timer = setTimeout(() => { child.kill(); reject(new Error("NVIDIA_ASR_CONVERSION_TIMEOUT")); }, 20000);
-    child.on("error", error => { clearTimeout(timer); reject(error); });
-    child.stdout.on("data", chunk => {
-      bytes += chunk.length;
-      if (bytes > 16 * 1024 * 1024) { child.kill(); reject(new Error("NVIDIA_ASR_AUDIO_TOO_LARGE")); }
-      else chunks.push(chunk);
-    });
-    child.stdin.on("error", () => {});
-    child.on("close", status => {
-      clearTimeout(timer);
-      if (status !== 0 || bytes < 44) return reject(new Error("NVIDIA_ASR_CONVERSION_FAILED"));
-      const buffer = Buffer.concat(chunks);
-      // FFmpeg writes unknown RIFF/data lengths when output is a pipe; repair them.
-      buffer.writeUInt32LE(buffer.length - 8, 4);
-      let offset = 12;
-      while (offset + 8 <= buffer.length) {
-        const length = buffer.readUInt32LE(offset + 4);
-        if (buffer.toString("ascii", offset, offset + 4) === "data") {
-          buffer.writeUInt32LE(buffer.length - offset - 8, offset + 4);
-          break;
-        }
-        offset += 8 + length + (length % 2);
-      }
-      resolve(buffer);
-    });
-    child.stdin.end(audio);
-  });
-  const form = new FormData();
-  form.append("file", new Blob([wav], { type: "audio/wav" }), "voice.wav");
-  form.append("language", "en-US");
-  const response = await fetch("https://1598d209-5e27-4d3c-8079-4751568b1081.invocation.api.nvcf.nvidia.com/v1/audio/transcriptions", {
-    method: "POST", headers: { Authorization: "Bearer " + key }, body: form, signal: AbortSignal.timeout(25000),
-  });
-  if (!response.ok) throw new Error("NVIDIA_ASR_HTTP_" + response.status);
-  const result = await response.json();
-  const transcript = result.text || result.transcript;
-  if (typeof transcript !== "string" || !transcript.trim()) throw new Error("NVIDIA_ASR_EMPTY_RESPONSE");
-  return transcript.trim();
-}
-
-async function synthesizeNvidiaVoice(answer) {
-  const key = getNvidiaApiKey();
-  if (!key) throw new Error("NVIDIA_API_KEY_MISSING");
-  const form = new FormData();
-  form.append("text", getSpeechText(answer));
-  form.append("language", process.env.NVIDIA_TTS_LANGUAGE?.trim() || "en-US");
-  form.append("voice", process.env.NVIDIA_TTS_VOICE?.trim() || "Magpie-Multilingual.EN-US.Jason");
-  form.append("encoding", "LINEAR_PCM");
-  form.append("sample_rate_hz", "44100");
-  const response = await fetch("https://877104f7-e885-42b9-8de8-f6e4c6303969.invocation.api.nvcf.nvidia.com/v1/audio/synthesize", {
-    method: "POST", headers: { Authorization: "Bearer " + key }, body: form, signal: AbortSignal.timeout(25000),
-  });
-  if (!response.ok) throw new Error("NVIDIA_TTS_HTTP_" + response.status);
-  const wav = Buffer.from(await response.arrayBuffer());
-  if (wav.length < 44 || wav.length > 8 * 1024 * 1024 || wav.toString("ascii",0,4) !== "RIFF" || wav.toString("ascii",8,12) !== "WAVE") throw new Error("NVIDIA_TTS_INVALID_WAV");
-  return wav;
-}
-
 function readChatHistory() {
   try {
     const data = JSON.parse(fs.readFileSync(HISTORY_FILE, "utf8"));
@@ -207,12 +111,12 @@ async function generateGeminiReply(chatId, userText, { onRetry, voiceReply = fal
     },
     {
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      timeout: (getGroqApiKey() || getNvidiaApiKey())
+      timeout: getGroqApiKey()
         ? Math.min(60000, Math.max(3000, Number(process.env.GEMINI_PRIMARY_TIMEOUT_MS) || 12000))
         : 60000,
     },
     onRetry,
-    (getGroqApiKey() || getNvidiaApiKey()) ? 0 : 2
+    getGroqApiKey() ? 0 : 2
   );
 
   answer = (response.data?.candidates?.[0]?.content?.parts || [])
@@ -231,10 +135,6 @@ async function generateGeminiReply(chatId, userText, { onRetry, voiceReply = fal
 
   } catch (geminiError) {
     if (geminiError.geminiSafetyBlocked) throw geminiError;
-    if (getNvidiaApiKey()) {
-      try { answer = await generateNvidiaReply(userText, past, { voiceReply }); }
-      catch { console.warn("NVIDIA chat failed; switching to Groq"); }
-    }
     if (!answer && getGroqApiKey()) {
       try { answer = await generateGroqReply(userText, past, loadPrompt(), { voiceReply }); }
       catch (error) { error.geminiFailure = geminiError; throw error; }
@@ -272,16 +172,8 @@ async function generateVoiceAnswer(chatId, audioBuffer, mimeType, { onRetry } = 
   } catch (geminiError) {
     if (geminiError.geminiSafetyBlocked) throw geminiError;
     let transcript, answer;
-    if (getNvidiaApiKey()) {
-      try { transcript = await transcribeNvidiaVoice(audioBuffer); }
-      catch { console.warn("NVIDIA transcription failed; switching to Groq"); }
-    }
     if (!transcript && getGroqApiKey()) transcript = await transcribeGroqVoiceNote(audioBuffer, mimeType);
     if (!transcript) throw geminiError;
-    if (getNvidiaApiKey()) {
-      try { answer = await generateNvidiaReply(transcript, past, { voiceReply: true }); }
-      catch { console.warn("NVIDIA voice chat failed; switching to Groq"); }
-    }
     if (!answer && getGroqApiKey()) answer = await generateGroqReply(transcript, past, loadPrompt(), { voiceReply: true });
     if (!answer) throw geminiError;
     chatHistory[chatId] = [...past, { role: "user", content: transcript }, { role: "assistant", content: answer }].slice(-MAX_HISTORY_MESSAGES);
@@ -340,13 +232,13 @@ async function generateGeminiVoiceAnswer(chatId, audioBuffer, mimeType, { onRetr
     },
     {
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      timeout: (getGroqApiKey() || getNvidiaApiKey())
+      timeout: getGroqApiKey()
         ? Math.min(45000, Math.max(5000, Number(process.env.GEMINI_VOICE_TIMEOUT_MS) || 18000))
         : 45000,
       httpsAgent: voiceHttpsAgent,
     },
     onRetry,
-    (getGroqApiKey() || getNvidiaApiKey()) ? 0 : 2
+    getGroqApiKey() ? 0 : 2
   );
   const finishReason = response.data?.candidates?.[0]?.finishReason;
   if (finishReason === "MAX_TOKENS") throw new Error("VOICE_INCOMPLETE_RESPONSE");
@@ -432,15 +324,6 @@ function extractTtsWav(data) {
   return audio;
 }
 async function synthesizeVoiceReply(answer, { onRetry } = {}) {
-  try { return await synthesizeGeminiVoiceReply(answer, { onRetry }); }
-  catch (error) {
-    if (!getNvidiaApiKey()) throw error;
-    console.warn("Gemini speech synthesis failed; switching to NVIDIA");
-    return await synthesizeNvidiaVoice(answer);
-  }
-}
-
-async function synthesizeGeminiVoiceReply(answer, { onRetry } = {}) {
   const apiKey = loadApiKey();
   if (!apiKey) throw new Error("GEMINI_API_KEY_MISSING");
   const response = await postGeminiWithRetry(
@@ -519,11 +402,9 @@ function describeGeminiError(error) {
   const description = typeof upstream === "string" ? upstream : error.message || "Unknown error";
   const key = loadApiKey();
   const groqKey = getGroqApiKey();
-  const nvidiaKey = getNvidiaApiKey();
   let safe = String(description);
   if (key) safe = safe.split(key).join("[REDACTED]");
   if (groqKey) safe = safe.split(groqKey).join("[REDACTED]");
-  if (nvidiaKey) safe = safe.split(nvidiaKey).join("[REDACTED]");
   safe = safe.replace(/\bgsk_[A-Za-z0-9_-]{12,}/g, "[REDACTED]");
   safe = safe.replace(/AIza[0-9A-Za-z_-]{20,}/g, "[REDACTED]");
   return `${status ? `HTTP ${status}` : "No HTTP response"}${code}: ${safe.slice(0, 500)}`;
