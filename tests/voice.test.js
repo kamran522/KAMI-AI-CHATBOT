@@ -106,7 +106,7 @@ test("TTS requests speech through Interactions API and extracts WAV output", asy
       assert.ok(calls[0][0].endsWith("/v1beta/interactions"));
       assert.equal(calls[0][1].model, "gemini-3.8-flash-lite-tts");
       assert.equal(calls[0][1].input[0].content[0].text, "Hello");
-      assert.equal(calls[0][1].generation_config.speech_config[0].voice, "Kore");
+      assert.equal(calls[0][1].generation_config.speech_config[0].voice, "Charon");
       assert.equal(calls[0][1].response_format.type, "audio");
       assert.equal(calls[0][2].httpsAgent.keepAlive, true);
       assert.equal(fixture.api.getSpeechText("a".repeat(1200)), "a".repeat(1200));

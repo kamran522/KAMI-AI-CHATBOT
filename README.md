@@ -69,7 +69,7 @@ If needed, select a different model for a single command:
 GEMINI_MODEL=gemini-3.5-flash-lite npm run check:gemini
 ```
 
-## Groq AI automatic fallback
+## Groq AI primary provider and Gemini fallback
 
 The bot attempts **Gemini first**. If it fails (including timeout, quota, invalid/missing Gemini key, or unavailable model), the bot automatically asks **Groq chat** using its separate private API key, preserving the same custom prompt and chat history. Gemini safety blocks are not automatically bypassed.
 
@@ -103,9 +103,9 @@ Check the models exposed to your account in [Groq's model API documentation](htt
 
 **WhatsApp text:** When Groq is configured, the bot tries Gemini once and switches to Groq upon failure, without spending time on extra Gemini retries. Without Groq, the previous Gemini retry behavior is unchanged.
 
-**WhatsApp voice notes:** Gemini is the primary voice-understanding model. If it fails, Groq Whisper transcribes the note and Groq chat generates the reply. **Speaking the reply still requires Gemini TTS.** If Gemini TTS is unavailable or no Gemini key is configured, the bot delivers the Groq answer as text; this integration does not replace Gemini speech synthesis.
+**WhatsApp voice notes:** Groq Whisper transcribes voice notes first and Groq chat generates the reply. If either fails, Gemini handles the original voice note. **Speaking the reply still requires Gemini TTS.** If Gemini TTS is unavailable or no Gemini key is configured, the bot sends a voice-generation error notice; this integration does not replace Gemini speech synthesis.
 
-Voice fallback shares the note with Groq, a separate third party, when Gemini fails. The bot does not save original audio files, but chat transcripts continue to be stored in `chat_history.json`. Different providers may charge separately and have different privacy policies.
+Voice notes go to Groq first and may be shared with Gemini when Groq fails. The bot does not save original audio files, but chat transcripts continue to be stored in `chat_history.json`. Different providers may charge separately and have different privacy policies.
 
 If both providers fail, the bot sends an error message rather than silently dropping the reply. The update script checks Gemini and, if it fails, validates Groq before restarting PM2. API keys stay on your server and are never uploaded by the updater.
 
@@ -140,7 +140,7 @@ The existing `GEMINI_API_KEY` or `key.json` is reused. Optional environment vari
 | --- | --- | --- |
 | `GEMINI_AUDIO_MODEL` | `GEMINI_MODEL` / `gemini-3.5-flash-lite` | Audio transcription |
 | `GEMINI_TTS_MODEL` | `gemini-3.8-flash-lite-tts` | Speech synthesis via Gemini Interactions API |
-| `GEMINI_TTS_VOICE` | `Kore` | Synthetic voice |
+| `GEMINI_TTS_VOICE` | `Charon` | Synthetic voice |
 
 Voice replies speak the complete generated answer rather than truncating it at a character limit. The bot also sends only the most recent four conversation turns to Gemini for voice notes and reuses the HTTPS connection between its AI and speech requests. Actual response time still depends on Gemini and WhatsApp. For diagnosis, check the `Voice-note timings (ms)` line in `pm2 logs kami-ai-chat-bot`.
 
