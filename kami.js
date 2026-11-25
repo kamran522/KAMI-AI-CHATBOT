@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const axios = require("axios");
 const https = require("node:https");
-const { getGroqApiKey, generateGroqReply, transcribeGroqVoiceNote, shouldFallbackToGroq } = require("./groq");
+const { getGroqApiKey, generateGroqReply, transcribeGroqVoiceNote, describeGroqError } = require("./groq");
 
 const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 const MAX_HISTORY_MESSAGES = 20;
@@ -49,7 +49,8 @@ function readChatHistory() {
 const chatHistory = readChatHistory();
 
 function saveChatHistory() {
-  fs.writeFileSync(HISTORY_FILE, JSON.stringify(chatHistory, null, 2) + "\n", "utf8");
+  try { fs.writeFileSync(HISTORY_FILE, JSON.stringify(chatHistory, null, 2) + "\n", "utf8"); }
+  catch (error) { console.warn("Could not save chat history:", error.code || "WRITE_FAILED"); }
 }
 
 // Read normal text, replies, and text captions, including disappearing messages.
@@ -83,6 +84,14 @@ function extractIncomingText(message) {
 async function generateGeminiReply(chatId, userText, { onRetry, voiceReply = false } = {}) {
   const past = Array.isArray(chatHistory[chatId]) ? chatHistory[chatId] : [];
   let answer;
+  let groqFailure;
+  try {
+    answer = await generateGroqReply(userText, past, loadPrompt(), { voiceReply });
+  } catch (error) {
+    groqFailure = error;
+    console.warn("Groq failed; switching to Gemini:", describeGroqError(error));
+  }
+  if (!answer) {
   try {
   const apiKey = loadApiKey();
   if (!apiKey) throw new Error("GEMINI_API_KEY_MISSING");
@@ -113,8 +122,8 @@ async function generateGeminiReply(chatId, userText, { onRetry, voiceReply = fal
         ? Math.min(60000, Math.max(3000, Number(process.env.GEMINI_PRIMARY_TIMEOUT_MS) || 12000))
         : 60000,
     },
-    getGroqApiKey() ? undefined : onRetry,
-    getGroqApiKey() ? 0 : 2
+    onRetry,
+    2
   );
 
   answer = (response.data?.candidates?.[0]?.content?.parts || [])
@@ -132,18 +141,9 @@ async function generateGeminiReply(chatId, userText, { onRetry, voiceReply = fal
   }
 
   } catch (geminiError) {
-    if (!shouldFallbackToGroq(geminiError)) throw geminiError;
-    console.warn("Gemini failed; switching to Groq:", describeGeminiError(geminiError));
-    if (typeof onRetry === "function") {
-      try { await onRetry(geminiError); }
-      catch (notificationError) { console.warn("Unable to notify fallback:", notificationError.message); }
-    }
-    try {
-      answer = await generateGroqReply(userText, past, loadPrompt(), { voiceReply });
-    } catch (groqError) {
-      groqError.geminiFailure = geminiError;
-      throw groqError;
-    }
+    geminiError.groqFailure = groqFailure;
+    throw geminiError;
+  }
   }
 
   chatHistory[chatId] = [
@@ -168,32 +168,28 @@ function getSpeechText(answer) {
  * Synthesis remains separate because its output is audio.
  */
 async function generateVoiceAnswer(chatId, audioBuffer, mimeType, { onRetry } = {}) {
+  if (!Buffer.isBuffer(audioBuffer) || !audioBuffer.length) throw new Error("VOICE_EMPTY_AUDIO");
+  if (audioBuffer.length > 8 * 1024 * 1024) throw new Error("VOICE_TOO_LARGE");
+  const past = Array.isArray(chatHistory[chatId]) ? chatHistory[chatId] : [];
+  let transcript, answer;
   try {
-    return await generateGeminiVoiceAnswer(chatId, audioBuffer, mimeType, {
-      onRetry: getGroqApiKey() ? undefined : onRetry,
-    });
-  } catch (geminiError) {
-    if (!shouldFallbackToGroq(geminiError)) throw geminiError;
-    console.warn("Gemini voice failed; switching to Groq Whisper:", describeGeminiError(geminiError));
-    if (typeof onRetry === "function") {
-      try { await onRetry(geminiError); }
-      catch (notificationError) { console.warn("Unable to notify fallback:", notificationError.message); }
-    }
-    const past = Array.isArray(chatHistory[chatId]) ? chatHistory[chatId] : [];
+    transcript = await transcribeGroqVoiceNote(audioBuffer, mimeType);
+    answer = await generateGroqReply(transcript, past, loadPrompt(), { voiceReply: true });
+  } catch (error) {
+    console.warn("Groq voice failed; switching to Gemini:", describeGroqError(error));
     try {
-      const transcript = await transcribeGroqVoiceNote(audioBuffer, mimeType);
-      const answer = await generateGroqReply(transcript, past, loadPrompt(), { voiceReply: true });
-      chatHistory[chatId] = [...past,
-        { role: "user", content: transcript },
-        { role: "assistant", content: answer },
-      ].slice(-MAX_HISTORY_MESSAGES);
-      saveChatHistory();
-      return answer;
-    } catch (groqError) {
-      groqError.geminiFailure = geminiError;
-      throw groqError;
+      return await generateGeminiVoiceAnswer(chatId, audioBuffer, mimeType, { onRetry });
+    } catch (geminiError) {
+      geminiError.groqFailure = error;
+      throw geminiError;
     }
   }
+  chatHistory[chatId] = [...past,
+    { role: "user", content: transcript },
+    { role: "assistant", content: answer },
+  ].slice(-MAX_HISTORY_MESSAGES);
+  saveChatHistory();
+  return answer;
 }
 
 async function generateGeminiVoiceAnswer(chatId, audioBuffer, mimeType, { onRetry } = {}) {
@@ -252,7 +248,7 @@ async function generateGeminiVoiceAnswer(chatId, audioBuffer, mimeType, { onRetr
       httpsAgent: voiceHttpsAgent,
     },
     onRetry,
-    getGroqApiKey() ? 0 : 2
+    2
   );
   const finishReason = response.data?.candidates?.[0]?.finishReason;
   if (finishReason === "MAX_TOKENS") throw new Error("VOICE_INCOMPLETE_RESPONSE");
@@ -354,7 +350,7 @@ async function synthesizeVoiceReply(answer, { onRetry } = {}) {
       }],
       response_format: { type: "audio" },
       generation_config: {
-        speech_config: [{ voice: process.env.GEMINI_TTS_VOICE?.trim() || "Kore" }],
+        speech_config: [{ voice: process.env.GEMINI_TTS_VOICE?.trim() || "Charon" }],
       },
     },
     {
@@ -427,6 +423,10 @@ function describeGeminiError(error) {
 function getSafeErrorReply(error) {
   // Every failure gets a useful status; only temporary errors are retried.
   const prefix = "🔄 Updating, please wait...\n";
+  if (error.groqFailure) {
+    if (error.message === "VOICE_NO_SPEECH") return "I couldn’t understand the voice note. Please record it again.";
+    return prefix + "Both Groq and Gemini failed to provide a reply. Please try again later.";
+  }
   if (error.groqFallback) {
     const status = error.response?.status;
     if (status === 401 || status === 403) return prefix + "Gemini did not respond and the Groq API key was rejected. Contact the bot owner.";
