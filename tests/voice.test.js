@@ -208,7 +208,7 @@ test("voice note gets a ptt=true audio response, and text messages still receive
   assert.equal(fixture.requests.find((r) => r.text === "spoken question").mimeType, "audio/ogg");
 });
 
-test("TTS failures do not leak the answer as subtitles; oversized voice is never downloaded", async () => {
+test("TTS failures return the generated text answer; oversized voice is never downloaded", async () => {
   const a = makeSocketFixture({ ttsFails: true });
   await a.index.startKamiBot();
   a.ev.emit("messages.upsert", { type: "notify", messages: [
@@ -216,8 +216,8 @@ test("TTS failures do not leak the answer as subtitles; oversized voice is never
   ] });
   await flush();
   assert.equal(a.sent.length, 1);
-  assert.match(a.sent[0].payload.text, /couldn't generate a voice reply/i);
-  assert.doesNotMatch(a.sent[0].payload.text, /The spoken answer/);
+  assert.equal(a.sent[0].payload.text, "The spoken answer");
+  assert.equal(a.requests.length, 1);
 
   const b = makeSocketFixture({ tooLarge: true });
   await b.index.startKamiBot();
