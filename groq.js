@@ -120,7 +120,9 @@ function isGeminiSafetyBlock(error) {
 function shouldFallbackToGroq(error) {
   if (!getGroqApiKey() || isGeminiSafetyBlock(error)) return false;
   // User input errors should not be re-sent to another provider.
-  if (["VOICE_TOO_LARGE", "VOICE_EMPTY_AUDIO", "VOICE_NO_SPEECH", "VOICE_UNSUPPORTED_FORMAT"].includes(error?.message)) return false;
+  if (["VOICE_TOO_LARGE", "VOICE_EMPTY_AUDIO", "VOICE_UNSUPPORTED_FORMAT"].includes(error?.message)) return false;
+  // A model-level no-speech or malformed/incomplete response should be retried by Whisper.
+  // Only reject invalid input before sending it to another provider.
   return true;
 }
 
