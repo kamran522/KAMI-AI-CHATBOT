@@ -12,7 +12,7 @@ A WhatsApp auto-reply bot powered by Google Gemini, with Groq AI as an optional 
 - Faster WhatsApp voice-note replies: one Gemini audio request understands the note and drafts its response; a second request generates the voice (OGG/Opus)
 - Keeps conversation context between voice notes and text; text answers are used as a fallback if speech synthesis fails
 - Google Gemini integration with optional Groq failover for text replies and voice-note understanding
-- Groq Whisper fallback transcription when Gemini cannot understand a voice note
+- Groq Whisper fallback transcription when Gemini cannot understand a voice note, including empty, malformed, or token-truncated Gemini audio responses
 - Google Gemini integration and a custom bot personality/prompt
 - Recent conversation context per chat
 - WhatsApp QR-code pairing
