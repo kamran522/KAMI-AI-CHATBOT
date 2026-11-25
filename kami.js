@@ -141,7 +141,7 @@ async function generateGeminiReply(chatId, userText, { onRetry, voiceReply = fal
   }
 
   } catch (geminiError) {
-    geminiError.groqFailure = groqFailure;
+    if (getGroqApiKey()) geminiError.groqFailure = groqFailure;
     throw geminiError;
   }
   }
@@ -180,7 +180,7 @@ async function generateVoiceAnswer(chatId, audioBuffer, mimeType, { onRetry } = 
     try {
       return await generateGeminiVoiceAnswer(chatId, audioBuffer, mimeType, { onRetry });
     } catch (geminiError) {
-      geminiError.groqFailure = error;
+      if (getGroqApiKey()) geminiError.groqFailure = error;
       throw geminiError;
     }
   }
