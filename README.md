@@ -69,7 +69,7 @@ If needed, select a different model for a single command:
 GEMINI_MODEL=gemini-3.5-flash-lite npm run check:gemini
 ```
 
-## Groq AI primary provider and Gemini fallback
+## Gemini primary provider and Groq fallback
 
 The bot attempts **Gemini first**. If it fails (including timeout, quota, invalid/missing Gemini key, or unavailable model), the bot automatically asks **Groq chat** using its separate private API key, preserving the same custom prompt and chat history. Gemini safety blocks are not automatically bypassed.
 
@@ -103,9 +103,9 @@ Check the models exposed to your account in [Groq's model API documentation](htt
 
 **WhatsApp text:** When Groq is configured, the bot tries Gemini once and switches to Groq upon failure, without spending time on extra Gemini retries. Without Groq, the previous Gemini retry behavior is unchanged.
 
-**WhatsApp voice notes:** Groq Whisper transcribes voice notes first and Groq chat generates the reply. If either fails, Gemini handles the original voice note. **Speaking the reply uses Groq Orpheus first (male Troy), then Gemini Charon if Groq fails or the answer exceeds 200 characters.** If both speech providers fail, the bot sends a voice-generation error notice. Groq Orpheus officially supports English and Saudi Arabic only.
+**WhatsApp voice notes:** Gemini understands and answers voice notes first. If it fails, Groq Whisper transcribes the note and Groq chat generates the answer. Gemini Charon is used for speech synthesis. If synthesis, conversion or audio delivery fails, the generated answer is sent as text.
 
-Voice notes go to Groq first and may be shared with Gemini when Groq fails. The bot does not save original audio files, but chat transcripts continue to be stored in `chat_history.json`. Different providers may charge separately and have different privacy policies.
+Voice notes go to Gemini first and may be shared with Groq when Gemini fails. The bot does not save original audio files, but chat transcripts continue to be stored in `chat_history.json`. Different providers may charge separately and have different privacy policies.
 
 If both providers fail, the bot sends an error message rather than silently dropping the reply. The update script checks Gemini and, if it fails, validates Groq before restarting PM2. API keys stay on your server and are never uploaded by the updater.
 
@@ -116,7 +116,7 @@ Voice notes sent to the bot (WhatsApp push-to-talk audio, including disappearing
 1. The bot downloads an incoming voice note in memory. **One Gemini request** transcribes it and drafts the answer. If this fails, Groq Whisper and Groq chat can provide the transcript and answer.
 2. The transcript and answer enter the existing conversation context.
 3. Gemini Text-to-Speech speaks the complete generated answer. FFmpeg converts its WAV output to OGG/Opus, and Baileys sends it with `ptt: true` so WhatsApp displays a voice message.
-4. Voice-note replies are audio-only: the bot does not send the transcript, subtitles, or the remainder of a spoken answer as text. If Gemini speech synthesis or FFmpeg fails, it sends a short error notice without exposing the answer as text. If transcription fails, it sends a short error message. Large notes (over **8 MB** or **3 minutes**) are rejected.
+4. Successful spoken replies are audio-only. If speech synthesis, FFmpeg conversion or audio delivery fails, the bot sends the full generated answer as text. If transcription fails, it sends a short error message. Large notes (over **8 MB** or **3 minutes**) are rejected.
 
 Install FFmpeg on the Linux server before starting the bot:
 
@@ -152,7 +152,7 @@ The selected models must be available to your Gemini API key. The audio-to-answe
 
 **Troubleshooting failed voice replies:** The bot prints `Voice reply failed at Gemini TTS`, `Voice reply failed at FFmpeg OGG/Opus encoding`, or `Voice reply failed at WhatsApp audio delivery` with safe diagnostic details and processing times. An HTTP 404 usually means the TTS model is unavailable to the API key, HTTP 429 can mean quota/rate limiting, and a timeout suggests the TTS service is too slow for the configured deadline. Change `VOICE_TTS_TIMEOUT_MS` only after checking the real error.
 
-**Limitations:** Voice notes are limited to 8 MB and 3 minutes. Long answers are spoken in shortened form and followed by the full text. Actual voice synthesis depends on the external Gemini TTS model; it cannot be guaranteed offline.
+**Limitations:** Voice notes are limited to 8 MB and 3 minutes. The bot attempts to speak the complete answer and falls back to text when audio is unavailable. Actual voice synthesis depends on the external Gemini TTS model; it cannot be guaranteed offline.
 
 ## Start the bot manually
 
@@ -280,6 +280,3 @@ Do not delete `key.json` or `kami-ai-session/` while updating: they hold your cr
 - `.gitignore` excludes these sensitive files.
 - Protect SSH access and keep server dependencies updated.
 
-### Groq speech configuration
-
-`GROQ_TTS_MODEL` defaults to `canopylabs/orpheus-v1-english`; `GROQ_TTS_VOICE` defaults to `troy`. Groq speech requires an enabled Groq API key and model access. Gemini remains the backup for long replies and Groq synthesis errors.
