@@ -108,17 +108,16 @@ async function startKamiBot() {
                 `Voice-note timings (ms): download=${downloadedMs}, ai=${aiMs}, tts=${ttsMs}, ` +
                 `encode=${encodeMs}, send=${Date.now() - startedSending}`
               );
-              // Voice-note replies are audio-only; never send transcript/subtitle text.
+              // Successful voice replies do not need duplicate text.
             } catch (voiceError) {
               console.error(
                 `Voice reply failed at ${stage} (download=${downloadedMs}ms, ai=${aiMs}ms, stage=${Date.now() - stageStarted}ms):`,
                 describeGeminiError(voiceError)
               );
-              await client.sendMessage(
-                jid,
-                { text: "🔊 I couldn't generate a voice reply this time. Please try sending your voice note again." },
-                { quoted: message }
-              );
+              // Deliver the already-generated answer, without another AI request.
+              for (const chunk of splitReply(answer)) {
+                await client.sendMessage(jid, { text: chunk }, { quoted: message });
+              }
             }
           } else {
             // Keep automatic text replies unchanged.
