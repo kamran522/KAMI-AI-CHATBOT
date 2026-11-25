@@ -61,7 +61,8 @@ async function startKamiBot() {
           let hasNotifiedRetry = false;
           const onRetry = async (retryError) => {
             console.warn("Gemini request failed temporarily; retrying:", describeGeminiError(retryError));
-            if (hasNotifiedRetry) return;
+            // Voice-note conversations should contain audio replies only, not retry notices.
+            if (voiceNote || hasNotifiedRetry) return;
             hasNotifiedRetry = true;
             await client.sendMessage(
               jid,
@@ -107,20 +108,17 @@ async function startKamiBot() {
                 `Voice-note timings (ms): download=${downloadedMs}, ai=${aiMs}, tts=${ttsMs}, ` +
                 `encode=${encodeMs}, send=${Date.now() - startedSending}`
               );
-              // A long answer is spoken in shortened form; send full details as text.
-              if (getSpeechText(answer) !== answer.trim()) {
-                for (const chunk of splitReply(answer)) {
-                  await client.sendMessage(jid, { text: chunk }, { quoted: message });
-                }
-              }
+              // Voice-note replies are audio-only; never send transcript/subtitle text.
             } catch (voiceError) {
               console.error(
                 `Voice reply failed at ${stage} (download=${downloadedMs}ms, ai=${aiMs}ms, stage=${Date.now() - stageStarted}ms):`,
                 describeGeminiError(voiceError)
               );
-              for (const chunk of splitReply("🔊 Voice reply is unavailable right now. Here's the text answer:\n" + answer)) {
-                await client.sendMessage(jid, { text: chunk }, { quoted: message });
-              }
+              await client.sendMessage(
+                jid,
+                { text: "🔊 I couldn't generate a voice reply this time. Please try sending your voice note again." },
+                { quoted: message }
+              );
             }
           } else {
             // Keep automatic text replies unchanged.
