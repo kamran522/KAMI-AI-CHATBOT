@@ -109,7 +109,7 @@ test("TTS requests speech through Interactions API and extracts WAV output", asy
       assert.equal(calls[0][1].generation_config.speech_config[0].voice, "Kore");
       assert.equal(calls[0][1].response_format.type, "audio");
       assert.equal(calls[0][2].httpsAgent.keepAlive, true);
-      assert.ok(fixture.api.getSpeechText("a".repeat(1200)).endsWith("..."));
+      assert.equal(fixture.api.getSpeechText("a".repeat(1200)), "a".repeat(1200));
     } finally { fixture.cleanup(); }
   });
 });
@@ -208,7 +208,7 @@ test("voice note gets a ptt=true audio response, and text messages still receive
   assert.equal(fixture.requests.find((r) => r.text === "spoken question").mimeType, "audio/ogg");
 });
 
-test("TTS failures deliver the generated answer as text; oversized voice is never downloaded", async () => {
+test("TTS failures do not leak the answer as subtitles; oversized voice is never downloaded", async () => {
   const a = makeSocketFixture({ ttsFails: true });
   await a.index.startKamiBot();
   a.ev.emit("messages.upsert", { type: "notify", messages: [
@@ -216,8 +216,8 @@ test("TTS failures deliver the generated answer as text; oversized voice is neve
   ] });
   await flush();
   assert.equal(a.sent.length, 1);
-  assert.match(a.sent[0].payload.text, /Voice reply is unavailable/);
-  assert.match(a.sent[0].payload.text, /The spoken answer/);
+  assert.match(a.sent[0].payload.text, /couldn't generate a voice reply/i);
+  assert.doesNotMatch(a.sent[0].payload.text, /The spoken answer/);
 
   const b = makeSocketFixture({ tooLarge: true });
   await b.index.startKamiBot();
@@ -251,7 +251,7 @@ test("voice requests use a short context window and reuse the Gemini HTTPS conne
       assert.equal(calls[0][1].contents.length, 9); // 8 earlier turns plus voice note
       assert.equal(calls[0][1].contents[0].parts[0].text, "message-12");
       assert.equal(calls[0][2].httpsAgent.keepAlive, true);
-      assert.equal(fixture.api.getSpeechText("x".repeat(500)).length, 223); // 220 + ...
+      assert.equal(fixture.api.getSpeechText("x".repeat(500)).length, 500);
       assert.equal(fixture.api.getSpeechText("Hello"), "Hello");
     } finally {
       fixture.cleanup();

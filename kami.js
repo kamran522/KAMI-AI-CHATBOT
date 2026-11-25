@@ -9,8 +9,6 @@ const { getGroqApiKey, generateGroqReply, transcribeGroqVoiceNote, shouldFallbac
 const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 const MAX_HISTORY_MESSAGES = 20;
 const DEFAULT_TTS_MODEL = "gemini-3.8-flash-lite-tts";
-// Keep spoken WhatsApp replies short so TTS and file transfer complete sooner.
-const MAX_SPOKEN_CHARS = Math.floor(Math.min(450, Math.max(120, Number(process.env.VOICE_MAX_SPOKEN_CHARS) || 220)));
 const VOICE_HISTORY_MESSAGES = 8;
 // Reuse TLS connections across the two Gemini requests on Node.js 18 and later.
 const voiceHttpsAgent = new https.Agent({ keepAlive: true, maxSockets: 8, maxFreeSockets: 4 });
@@ -160,9 +158,8 @@ async function generateGeminiReply(chatId, userText, { onRetry, voiceReply = fal
 function getSpeechText(answer) {
   const trimmed = String(answer || "").trim();
   if (!trimmed) throw new Error("VOICE_EMPTY_REPLY");
-  return trimmed.length <= MAX_SPOKEN_CHARS
-    ? trimmed
-    : trimmed.slice(0, MAX_SPOKEN_CHARS).trimEnd() + "...";
+  // Speak the complete answer. Do not silently truncate and send the remainder as text.
+  return trimmed;
 }
 
 /**

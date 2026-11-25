@@ -10,7 +10,7 @@ A WhatsApp auto-reply bot powered by Google Gemini, with Groq AI as an optional 
 
 - Automatic replies to incoming WhatsApp text in private chats and groups
 - Faster WhatsApp voice-note replies: one Gemini audio request understands the note and drafts its response; a second request generates the voice (OGG/Opus)
-- Keeps conversation context between voice notes and text; text answers are used as a fallback if speech synthesis fails
+- Keeps conversation context between voice notes and text; voice-note replies stay audio-only and do not send transcript or subtitle messages
 - Google Gemini integration with optional Groq failover for text replies and voice-note understanding
 - Groq Whisper fallback transcription when Gemini cannot understand a voice note, including empty, malformed, or token-truncated Gemini audio responses
 - Google Gemini integration and a custom bot personality/prompt
@@ -115,8 +115,8 @@ Voice notes sent to the bot (WhatsApp push-to-talk audio, including disappearing
 
 1. The bot downloads an incoming voice note in memory. **One Gemini request** transcribes it and drafts the answer. If this fails, Groq Whisper and Groq chat can provide the transcript and answer.
 2. The transcript and answer enter the existing conversation context.
-3. Gemini Text-to-Speech speaks a concise response (default limit of 220 characters). FFmpeg converts its WAV output to OGG/Opus, and Baileys sends it with `ptt: true` so WhatsApp displays a voice message.
-4. If Gemini speech synthesis or FFmpeg fails, the bot sends the **text answer** instead. If transcription fails, it sends a short error message. Large notes (over **8 MB** or **3 minutes**) are rejected.
+3. Gemini Text-to-Speech speaks the complete generated answer. FFmpeg converts its WAV output to OGG/Opus, and Baileys sends it with `ptt: true` so WhatsApp displays a voice message.
+4. Voice-note replies are audio-only: the bot does not send the transcript, subtitles, or the remainder of a spoken answer as text. If Gemini speech synthesis or FFmpeg fails, it sends a short error notice without exposing the answer as text. If transcription fails, it sends a short error message. Large notes (over **8 MB** or **3 minutes**) are rejected.
 
 Install FFmpeg on the Linux server before starting the bot:
 
@@ -142,7 +142,7 @@ The existing `GEMINI_API_KEY` or `key.json` is reused. Optional environment vari
 | `GEMINI_TTS_MODEL` | `gemini-3.8-flash-lite-tts` | Speech synthesis via Gemini Interactions API |
 | `GEMINI_TTS_VOICE` | `Kore` | Synthetic voice |
 
-Voice replies are limited to **220 spoken characters by default** (change with `VOICE_MAX_SPOKEN_CHARS`, 120–450). The bot also sends only the most recent four conversation turns to Gemini for voice notes and reuses the HTTPS connection between its AI and speech requests. This reduces input and audio length; actual response time still depends on Gemini and WhatsApp. For diagnosis, check the `Voice-note timings (ms)` line in `pm2 logs kami-ai-chat-bot`.
+Voice replies speak the complete generated answer rather than truncating it at a character limit. The bot also sends only the most recent four conversation turns to Gemini for voice notes and reuses the HTTPS connection between its AI and speech requests. Actual response time still depends on Gemini and WhatsApp. For diagnosis, check the `Voice-note timings (ms)` line in `pm2 logs kami-ai-chat-bot`.
 
 Voice synthesis defaults to a 25-second deadline, after which the bot returns the text answer instead of continuing long TTS retries. Adjust with `VOICE_TTS_TIMEOUT_MS` (milliseconds, allowed range 3000–60000). This is an upper bound on the **TTS request**, not a total response-time guarantee.
 
