@@ -334,6 +334,37 @@ function extractTtsWav(data) {
   return audio;
 }
 async function synthesizeVoiceReply(answer, { onRetry } = {}) {
+  const input = getSpeechText(answer);
+  const key = getGroqApiKey();
+  if (key) {
+    try {
+      // Orpheus accepts at most 200 characters. Never silently truncate a reply.
+      if (Array.from(input).length > 200) throw new Error("GROQ_TTS_INPUT_TOO_LONG");
+      const response = await axios.post("https://api.groq.com/openai/v1/audio/speech", {
+        model: process.env.GROQ_TTS_MODEL?.trim() || "canopylabs/orpheus-v1-english",
+        voice: process.env.GROQ_TTS_VOICE?.trim() || "troy",
+        input,
+        response_format: "wav",
+      }, {
+        headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
+        responseType: "arraybuffer",
+        timeout: Math.min(60000, Math.max(3000, Number(process.env.VOICE_TTS_TIMEOUT_MS) || 25000)),
+        maxContentLength: 8 * 1024 * 1024,
+      });
+      const wav = Buffer.from(response.data);
+      if (wav.length < 44 || wav.length > 8 * 1024 * 1024 ||
+          wav.toString("ascii", 0, 4) !== "RIFF" || wav.toString("ascii", 8, 12) !== "WAVE") {
+        throw new Error("GROQ_TTS_INVALID_AUDIO");
+      }
+      return wav;
+    } catch (error) {
+      console.warn("Groq TTS failed; switching to Gemini:", describeGroqError(error));
+    }
+  }
+  return synthesizeGeminiVoiceReply(input, { onRetry });
+}
+
+async function synthesizeGeminiVoiceReply(answer, { onRetry } = {}) {
   const apiKey = loadApiKey();
   if (!apiKey) throw new Error("GEMINI_API_KEY_MISSING");
   const response = await postGeminiWithRetry(
