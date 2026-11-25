@@ -313,3 +313,50 @@ test("Gemini TTS parses both Interactions audio shapes and rejects bad audio", a
     fixture.cleanup();
   }
 });
+
+
+test("Groq male Troy speech is preferred and Gemini is not called", async () => {
+  const old = process.env.GROQ_API_KEY;
+  process.env.GROQ_API_KEY = "gsk_test_voice";
+  const wav = makeWav();
+  const calls = [];
+  const f = makeGeminiFixture(async (...args) => {
+    calls.push(args);
+    return { data: wav };
+  });
+  try {
+    assert.deepEqual(await f.api.synthesizeVoiceReply("Hello"), wav);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0][0], "https://api.groq.com/openai/v1/audio/speech");
+    assert.equal(calls[0][1].voice, process.env.GROQ_TTS_VOICE?.trim() || "troy");
+    assert.equal(calls[0][2].responseType, "arraybuffer");
+  } finally {
+    f.cleanup();
+    if (old === undefined) delete process.env.GROQ_API_KEY;
+    else process.env.GROQ_API_KEY = old;
+  }
+});
+
+test("Groq speech failure falls back to Gemini WAV", async () => {
+  await withTestKey(async () => {
+    const old = process.env.GROQ_API_KEY;
+    process.env.GROQ_API_KEY = "gsk_test_voice";
+    const wav = makeWav();
+    const calls = [];
+    const f = makeGeminiFixture(async (url) => {
+      calls.push(url);
+      if (url.includes("api.groq.com")) throw new Error("Groq unavailable");
+      return { data: { output_audio: { data: wav.toString("base64") } } };
+    });
+    try {
+      assert.deepEqual(await f.api.synthesizeVoiceReply("Hello"), wav);
+      assert.equal(calls.length, 2);
+      assert.match(calls[0], /api.groq.com/);
+      assert.match(calls[1], /generativelanguage/);
+    } finally {
+      f.cleanup();
+      if (old === undefined) delete process.env.GROQ_API_KEY;
+      else process.env.GROQ_API_KEY = old;
+    }
+  });
+});
