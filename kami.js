@@ -244,7 +244,7 @@ async function generateGeminiVoiceAnswer(chatId, audioBuffer, mimeType, { onRetr
           },
           required: ["transcript", "answer"],
         },
-        maxOutputTokens: 550,
+        maxOutputTokens: 2048,
       },
     },
     {
@@ -257,6 +257,8 @@ async function generateGeminiVoiceAnswer(chatId, audioBuffer, mimeType, { onRetr
     onRetry,
     getGroqApiKey() ? 0 : 2
   );
+  const finishReason = response.data?.candidates?.[0]?.finishReason;
+  if (finishReason === "MAX_TOKENS") throw new Error("VOICE_INCOMPLETE_RESPONSE");
   const raw = (response.data?.candidates?.[0]?.content?.parts || [])
     .filter((p) => typeof p.text === "string" && !p.thought)
     .map((p) => p.text).join("").trim();
