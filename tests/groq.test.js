@@ -243,3 +243,30 @@ test("explicit GROQ_MODEL is not silently overridden when that model is rejected
     } finally { fixture.cleanup(); }
   });
 });
+
+
+test("Gemini no-speech result is retried with Groq Whisper instead of stopping early", async () => {
+  await withKeys(async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => ({ ok: true, json: async () => ({ text: "Please help me with this question" }) });
+    const fixture = makeBot(async (url) => {
+      if (url.includes("generativelanguage")) {
+        return { data: { candidates: [{ content: { parts: [{ text: JSON.stringify({
+          transcript: "NO_SPEECH", answer: "Nothing heard",
+        }) }] } }] } };
+      }
+      return { data: { choices: [{ message: { content: "Recovered by Groq" } }] } };
+    });
+    try {
+      const answer = await fixture.bot.generateVoiceAnswer("voice-chat", Buffer.from("audio"), "audio/ogg");
+      assert.equal(answer, "Recovered by Groq");
+      assert.equal(fixture.requests.length, 2);
+      assert.equal(fixture.requests[1][1].messages.at(-1).content, "Please help me with this question");
+      assert.deepEqual(fixture.bot.readChatHistory()["voice-chat"].map((item) => item.content),
+        ["Please help me with this question", "Recovered by Groq"]);
+    } finally {
+      fixture.cleanup();
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
