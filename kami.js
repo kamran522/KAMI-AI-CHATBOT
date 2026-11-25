@@ -181,18 +181,6 @@ function extractIncomingText(message) {
 async function generateGeminiReply(chatId, userText, { onRetry, voiceReply = false } = {}) {
   const past = Array.isArray(chatHistory[chatId]) ? chatHistory[chatId] : [];
   let answer;
-  let groqFailure;
-  if (getNvidiaApiKey()) {
-    try { answer = await generateNvidiaReply(userText, past, { voiceReply }); }
-    catch { console.warn("NVIDIA chat failed; switching to Groq"); }
-  }
-  if (!answer) try {
-    answer = await generateGroqReply(userText, past, loadPrompt(), { voiceReply });
-  } catch (error) {
-    groqFailure = error;
-    console.warn("Groq failed; switching to Gemini:", describeGroqError(error));
-  }
-  if (!answer) {
   try {
   const apiKey = loadApiKey();
   if (!apiKey) throw new Error("GEMINI_API_KEY_MISSING");
@@ -219,12 +207,12 @@ async function generateGeminiReply(chatId, userText, { onRetry, voiceReply = fal
     },
     {
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      timeout: getGroqApiKey()
+      timeout: (getGroqApiKey() || getNvidiaApiKey())
         ? Math.min(60000, Math.max(3000, Number(process.env.GEMINI_PRIMARY_TIMEOUT_MS) || 12000))
         : 60000,
     },
     onRetry,
-    2
+    (getGroqApiKey() || getNvidiaApiKey()) ? 0 : 2
   );
 
   answer = (response.data?.candidates?.[0]?.content?.parts || [])
@@ -242,9 +230,16 @@ async function generateGeminiReply(chatId, userText, { onRetry, voiceReply = fal
   }
 
   } catch (geminiError) {
-    if (getGroqApiKey()) geminiError.groqFailure = groqFailure;
-    throw geminiError;
-  }
+    if (geminiError.geminiSafetyBlocked) throw geminiError;
+    if (getNvidiaApiKey()) {
+      try { answer = await generateNvidiaReply(userText, past, { voiceReply }); }
+      catch { console.warn("NVIDIA chat failed; switching to Groq"); }
+    }
+    if (!answer && getGroqApiKey()) {
+      try { answer = await generateGroqReply(userText, past, loadPrompt(), { voiceReply }); }
+      catch (error) { error.geminiFailure = geminiError; throw error; }
+    }
+    if (!answer) throw geminiError;
   }
 
   chatHistory[chatId] = [
@@ -272,29 +267,27 @@ async function generateVoiceAnswer(chatId, audioBuffer, mimeType, { onRetry } = 
   if (!Buffer.isBuffer(audioBuffer) || !audioBuffer.length) throw new Error("VOICE_EMPTY_AUDIO");
   if (audioBuffer.length > 8 * 1024 * 1024) throw new Error("VOICE_TOO_LARGE");
   const past = Array.isArray(chatHistory[chatId]) ? chatHistory[chatId] : [];
-  let transcript, answer;
-  if (getNvidiaApiKey()) {
-    try { transcript = await transcribeNvidiaVoice(audioBuffer); }
-    catch { console.warn("NVIDIA transcription failed; switching to Groq"); }
-  }
   try {
-    if (!transcript) transcript = await transcribeGroqVoiceNote(audioBuffer, mimeType);
-    return await generateGeminiReply(chatId, transcript, { onRetry, voiceReply: true });
-  } catch (error) {
-    console.warn("Groq voice failed; switching to Gemini:", describeGroqError(error));
-    try {
-      return await generateGeminiVoiceAnswer(chatId, audioBuffer, mimeType, { onRetry });
-    } catch (geminiError) {
-      if (getGroqApiKey()) geminiError.groqFailure = error;
-      throw geminiError;
+    return await generateGeminiVoiceAnswer(chatId, audioBuffer, mimeType, { onRetry });
+  } catch (geminiError) {
+    if (geminiError.geminiSafetyBlocked) throw geminiError;
+    let transcript, answer;
+    if (getNvidiaApiKey()) {
+      try { transcript = await transcribeNvidiaVoice(audioBuffer); }
+      catch { console.warn("NVIDIA transcription failed; switching to Groq"); }
     }
+    if (!transcript && getGroqApiKey()) transcript = await transcribeGroqVoiceNote(audioBuffer, mimeType);
+    if (!transcript) throw geminiError;
+    if (getNvidiaApiKey()) {
+      try { answer = await generateNvidiaReply(transcript, past, { voiceReply: true }); }
+      catch { console.warn("NVIDIA voice chat failed; switching to Groq"); }
+    }
+    if (!answer && getGroqApiKey()) answer = await generateGroqReply(transcript, past, loadPrompt(), { voiceReply: true });
+    if (!answer) throw geminiError;
+    chatHistory[chatId] = [...past, { role: "user", content: transcript }, { role: "assistant", content: answer }].slice(-MAX_HISTORY_MESSAGES);
+    saveChatHistory();
+    return answer;
   }
-  chatHistory[chatId] = [...past,
-    { role: "user", content: transcript },
-    { role: "assistant", content: answer },
-  ].slice(-MAX_HISTORY_MESSAGES);
-  saveChatHistory();
-  return answer;
 }
 
 async function generateGeminiVoiceAnswer(chatId, audioBuffer, mimeType, { onRetry } = {}) {
@@ -347,13 +340,13 @@ async function generateGeminiVoiceAnswer(chatId, audioBuffer, mimeType, { onRetr
     },
     {
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      timeout: getGroqApiKey()
+      timeout: (getGroqApiKey() || getNvidiaApiKey())
         ? Math.min(45000, Math.max(5000, Number(process.env.GEMINI_VOICE_TIMEOUT_MS) || 18000))
         : 45000,
       httpsAgent: voiceHttpsAgent,
     },
     onRetry,
-    2
+    (getGroqApiKey() || getNvidiaApiKey()) ? 0 : 2
   );
   const finishReason = response.data?.candidates?.[0]?.finishReason;
   if (finishReason === "MAX_TOKENS") throw new Error("VOICE_INCOMPLETE_RESPONSE");
@@ -439,10 +432,15 @@ function extractTtsWav(data) {
   return audio;
 }
 async function synthesizeVoiceReply(answer, { onRetry } = {}) {
-  if (getNvidiaApiKey()) {
-    try { return await synthesizeNvidiaVoice(answer); }
-    catch { console.warn("NVIDIA speech synthesis failed; switching to Gemini"); }
+  try { return await synthesizeGeminiVoiceReply(answer, { onRetry }); }
+  catch (error) {
+    if (!getNvidiaApiKey()) throw error;
+    console.warn("Gemini speech synthesis failed; switching to NVIDIA");
+    return await synthesizeNvidiaVoice(answer);
   }
+}
+
+async function synthesizeGeminiVoiceReply(answer, { onRetry } = {}) {
   const apiKey = loadApiKey();
   if (!apiKey) throw new Error("GEMINI_API_KEY_MISSING");
   const response = await postGeminiWithRetry(
