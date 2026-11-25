@@ -103,7 +103,7 @@ Check the models exposed to your account in [Groq's model API documentation](htt
 
 **WhatsApp text:** When Groq is configured, the bot tries Gemini once and switches to Groq upon failure, without spending time on extra Gemini retries. Without Groq, the previous Gemini retry behavior is unchanged.
 
-**WhatsApp voice notes:** Groq Whisper transcribes voice notes first and Groq chat generates the reply. If either fails, Gemini handles the original voice note. **Speaking the reply still requires Gemini TTS.** If Gemini TTS is unavailable or no Gemini key is configured, the bot sends a voice-generation error notice; this integration does not replace Gemini speech synthesis.
+**WhatsApp voice notes:** Groq Whisper transcribes voice notes first and Groq chat generates the reply. If either fails, Gemini handles the original voice note. **Speaking the reply uses Groq Orpheus first (male Troy), then Gemini Charon if Groq fails or the answer exceeds 200 characters.** If both speech providers fail, the bot sends a voice-generation error notice. Groq Orpheus officially supports English and Saudi Arabic only.
 
 Voice notes go to Groq first and may be shared with Gemini when Groq fails. The bot does not save original audio files, but chat transcripts continue to be stored in `chat_history.json`. Different providers may charge separately and have different privacy policies.
 
@@ -279,3 +279,7 @@ Do not delete `key.json` or `kami-ai-session/` while updating: they hold your cr
 - Never upload `key.json`, `kami-ai-session/`, or private chat history to GitHub.
 - `.gitignore` excludes these sensitive files.
 - Protect SSH access and keep server dependencies updated.
+
+### Groq speech configuration
+
+`GROQ_TTS_MODEL` defaults to `canopylabs/orpheus-v1-english`; `GROQ_TTS_VOICE` defaults to `troy`. Groq speech requires an enabled Groq API key and model access. Gemini remains the backup for long replies and Groq synthesis errors.
